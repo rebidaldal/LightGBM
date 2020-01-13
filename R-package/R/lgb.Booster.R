@@ -653,11 +653,9 @@ Booster <- R6::R6Class(
   )
 )
 
-
-#' Predict method for LightGBM model
-#'
-#' Predicted values based on class \code{lgb.Booster}
-#'
+#' @name predict.lgb.Booster
+#' @title Predict method for LightGBM model
+#' @description Predicted values based on class \code{lgb.Booster}
 #' @param object Object of class \code{lgb.Booster}
 #' @param data a \code{matrix} object, a \code{dgCMatrix} object or a character representing a filename
 #' @param num_iteration number of iteration want to predict with, NULL or <= 0 means use best iteration
@@ -699,8 +697,6 @@ Booster <- R6::R6Class(
 #'   , early_stopping_rounds = 5L
 #' )
 #' preds <- predict(model, test$data)
-#'
-#' @rdname predict.lgb.Booster
 #' @export
 predict.lgb.Booster <- function(object,
                                 data,
@@ -730,12 +726,10 @@ predict.lgb.Booster <- function(object,
   )
 }
 
-#' Load LightGBM model
-#'
-#' Load LightGBM model from saved model file or string
-#' Load LightGBM takes in either a file path or model string
-#' If both are provided, Load will default to loading from file
-#'
+#' @name lgb.load
+#' @title Load LightGBM model
+#' @description  Load LightGBM takes in either a file path or model string
+#'               If both are provided, Load will default to loading from file
 #' @param filename path of model file
 #' @param model_str a str containing the model
 #'
@@ -765,7 +759,6 @@ predict.lgb.Booster <- function(object,
 #' model_string <- model$save_model_to_string(NULL) # saves best iteration
 #' load_booster_from_str <- lgb.load(model_str = model_string)
 #'
-#' @rdname lgb.load
 #' @export
 lgb.load <- function(filename = NULL, model_str = NULL) {
 
@@ -791,10 +784,9 @@ lgb.load <- function(filename = NULL, model_str = NULL) {
 
 }
 
-#' Save LightGBM model
-#'
-#' Save LightGBM model
-#'
+#' @name lgb.save
+#' @title Save LightGBM model
+#' @description Save LightGBM model
 #' @param booster Object of class \code{lgb.Booster}
 #' @param filename saved filename
 #' @param num_iteration number of iteration want to predict with, NULL or <= 0 means use best iteration
@@ -821,8 +813,6 @@ lgb.load <- function(filename = NULL, model_str = NULL) {
 #'   , early_stopping_rounds = 5L
 #' )
 #' lgb.save(model, "model.txt")
-#'
-#' @rdname lgb.save
 #' @export
 lgb.save <- function(booster, filename, num_iteration = NULL) {
 
@@ -841,10 +831,9 @@ lgb.save <- function(booster, filename, num_iteration = NULL) {
 
 }
 
-#' Dump LightGBM model to json
-#'
-#' Dump LightGBM model to json
-#'
+#' @name lgb.dump
+#' @title Dump LightGBM model to json
+#' @description Dump LightGBM model to json
 #' @param booster Object of class \code{lgb.Booster}
 #' @param num_iteration number of iteration want to predict with, NULL or <= 0 means use best iteration
 #'
@@ -871,7 +860,6 @@ lgb.save <- function(booster, filename, num_iteration = NULL) {
 #' )
 #' json_model <- lgb.dump(model)
 #'
-#' @rdname lgb.dump
 #' @export
 lgb.dump <- function(booster, num_iteration = NULL) {
 
@@ -885,9 +873,9 @@ lgb.dump <- function(booster, num_iteration = NULL) {
 
 }
 
-#' Get record evaluation result from booster
-#'
-#' Get record evaluation result from booster
+#' @name lgb.get.eval.result
+#' @title Get record evaluation result from booster
+#' @description Get record evaluation result from booster
 #' @param booster Object of class \code{lgb.Booster}
 #' @param data_name name of dataset
 #' @param eval_name name of evaluation
@@ -916,7 +904,6 @@ lgb.dump <- function(booster, num_iteration = NULL) {
 #'   , early_stopping_rounds = 5L
 #' )
 #' lgb.get.eval.result(model, "test", "l2")
-#' @rdname lgb.get.eval.result
 #' @export
 lgb.get.eval.result <- function(booster, data_name, eval_name, iters = NULL, is_err = FALSE) {
 
