@@ -31,7 +31,9 @@ public:
     }
   }
   inline uint32_t Get(data_size_t idx) override;
-  inline uint32_t RawGet(data_size_t idx) override { return idx; }
+  inline uint32_t RawGet(data_size_t idx) override {
+    Log::Fatal("No RawGet for MultiValDenseBinIterator");
+  }
   inline void Reset(data_size_t) override {}
 
 private:
