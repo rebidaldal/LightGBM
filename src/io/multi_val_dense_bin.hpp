@@ -20,11 +20,11 @@ class MultiValDenseBin;
 template <typename VAL_T>
 class MultiValDenseBinIterator : public BinIterator {
 public:
-  explicit MultiValDenseBinIterator(const MultiValDenseBin<VAL_T>* bin_data, uint32_t min_bin, uint32_t max_bin, uint32_t default_bin)
+  explicit MultiValDenseBinIterator(const MultiValDenseBin<VAL_T>* bin_data, uint32_t min_bin, uint32_t max_bin, uint32_t most_freq_bin)
     : bin_data_(bin_data), min_bin_(static_cast<VAL_T>(min_bin)),
     max_bin_(static_cast<VAL_T>(max_bin)),
-    default_bin_(static_cast<VAL_T>(default_bin)) {
-    if (default_bin_ == 0) {
+    most_freq_bin_(static_cast<VAL_T>(most_freq_bin)) {
+    if (most_freq_bin_ == 0) {
       offset_ = 1;
     } else {
       offset_ = 0;
@@ -38,7 +38,7 @@ private:
   const MultiValDenseBin<VAL_T>* bin_data_;
   VAL_T min_bin_;
   VAL_T max_bin_;
-  VAL_T default_bin_;
+  VAL_T most_freq_bin_;
   uint8_t offset_;
 };
 /*!
@@ -154,38 +154,40 @@ public:
     const VAL_T minb = static_cast<VAL_T>(min_bin);
     const VAL_T maxb = static_cast<VAL_T>(max_bin);
     VAL_T t_default_bin = static_cast<VAL_T>(min_bin + default_bin);
-    if (default_bin == 0) {
+    VAL_T t_most_freq_bin = static_cast<VAL_T>(min_bin + most_freq_bin);
+    if (most_freq_bin == 0) {
       th -= 1;
       t_default_bin -= 1;
+      t_most_freq_bin -= 1;
     }
     data_size_t lte_count = 0;
     data_size_t gt_count = 0;
     data_size_t* default_indices = gt_indices;
     data_size_t* default_count = &gt_count;
+    data_size_t* missing_default_indices = gt_indices;
+    data_size_t* missing_default_count = &gt_count;
+    if (most_freq_bin <= threshold) {
+      default_indices = lte_indices;
+      default_count = &lte_count;
+    }
     if (missing_type == MissingType::NaN) {
-      if (default_bin <= threshold) {
-        default_indices = lte_indices;
-        default_count = &lte_count;
-      }
-      data_size_t* missing_default_indices = gt_indices;
-      data_size_t* missing_default_count = &gt_count;
       if (default_left) {
         missing_default_indices = lte_indices;
         missing_default_count = &lte_count;
       }
       for (data_size_t i = 0; i < num_data; ++i) {
-        VAL_T bin = t_default_bin;
-        const auto idx = data_indices[i];
+        const data_size_t idx = data_indices[i];
+        VAL_T bin = t_most_freq_bin;
         for (data_size_t j = RowPtr(idx); j < RowPtr(idx + 1); ++j) {
           if (data_[j] >= minb && data_[j] <= maxb) {
             bin = data_[j];
             break;
           }
         }
-        if (t_default_bin == bin) {
-          default_indices[(*default_count)++] = idx;
-        } else if (bin == maxb) {
+        if (bin == maxb) {
           missing_default_indices[(*missing_default_count)++] = idx;
+        } else if (t_most_freq_bin == bin) {
+          default_indices[(*default_count)++] = idx;
         } else if (bin > th) {
           gt_indices[gt_count++] = idx;
         } else {
@@ -193,25 +195,48 @@ public:
         }
       }
     } else {
-      if ((default_left && missing_type == MissingType::Zero) || (default_bin <= threshold && missing_type != MissingType::Zero)) {
-        default_indices = lte_indices;
-        default_count = &lte_count;
+      if ((default_left && missing_type == MissingType::Zero)
+        || (default_bin <= threshold && missing_type != MissingType::Zero)) {
+        missing_default_indices = lte_indices;
+        missing_default_count = &lte_count;
       }
-      for (data_size_t i = 0; i < num_data; ++i) {
-        VAL_T bin = t_default_bin;
-        const auto idx = data_indices[i];
-        for (data_size_t j = RowPtr(idx); j < RowPtr(idx + 1); ++j) {
-          if (data_[j] >= minb && data_[j] <= maxb) {
-            bin = data_[j];
-            break;
+      if (default_bin == most_freq_bin) {
+        for (data_size_t i = 0; i < num_data; ++i) {
+          const data_size_t idx = data_indices[i];
+          VAL_T bin = t_most_freq_bin;
+          for (data_size_t j = RowPtr(idx); j < RowPtr(idx + 1); ++j) {
+            if (data_[j] >= minb && data_[j] <= maxb) {
+              bin = data_[j];
+              break;
+            }
+          }
+          if (t_most_freq_bin == bin) {
+            missing_default_indices[(*missing_default_count)++] = idx;
+          } else if (bin > th) {
+            gt_indices[gt_count++] = idx;
+          } else {
+            lte_indices[lte_count++] = idx;
           }
         }
-        if (t_default_bin == bin) {
-          default_indices[(*default_count)++] = idx;
-        } else if (bin > th) {
-          gt_indices[gt_count++] = idx;
-        } else {
-          lte_indices[lte_count++] = idx;
+      } else {
+        for (data_size_t i = 0; i < num_data; ++i) {
+          const data_size_t idx = data_indices[i];
+          VAL_T bin = t_most_freq_bin;
+          for (data_size_t j = RowPtr(idx); j < RowPtr(idx + 1); ++j) {
+            if (data_[j] >= minb && data_[j] <= maxb) {
+              bin = data_[j];
+              break;
+            }
+          }
+          if (bin == t_default_bin) {
+            missing_default_indices[(*missing_default_count)++] = idx;
+          } else if (t_most_freq_bin == bin) {
+            default_indices[(*default_count)++] = idx;
+          } else if (bin > th) {
+            gt_indices[gt_count++] = idx;
+          } else {
+            lte_indices[lte_count++] = idx;
+          }
         }
       }
     }
@@ -219,7 +244,7 @@ public:
   }
 
   data_size_t SplitCategorical(
-    uint32_t min_bin, uint32_t max_bin, uint32_t default_bin,
+    uint32_t min_bin, uint32_t max_bin, uint32_t most_freq_bin,
     const uint32_t* threshold, int num_threahold, data_size_t* data_indices, data_size_t num_data,
     data_size_t* lte_indices, data_size_t* gt_indices) const override {
     if (num_data <= 0) { return 0; }
@@ -227,20 +252,20 @@ public:
     data_size_t gt_count = 0;
     data_size_t* default_indices = gt_indices;
     data_size_t* default_count = &gt_count;
-    if (Common::FindInBitset(threshold, num_threahold, default_bin)) {
+    if (Common::FindInBitset(threshold, num_threahold, most_freq_bin)) {
       default_indices = lte_indices;
       default_count = &lte_count;
     }
     for (data_size_t i = 0; i < num_data; ++i) {
       const data_size_t idx = data_indices[i];
-      uint32_t bin = default_bin;
+      uint32_t bin = most_freq_bin;
       for (data_size_t j = RowPtr(idx); j < RowPtr(idx + 1); ++j) {
         if (data_[j] >= min_bin && data_[j] <= max_bin) {
           bin = data_[j];
           break;
         }
       }
-      if (bin == default_bin) {
+      if (bin == most_freq_bin) {
         default_indices[(*default_count)++] = idx;
       } else if (Common::FindInBitset(threshold, num_threahold, bin - min_bin)) {
         lte_indices[lte_count++] = idx;
@@ -255,7 +280,7 @@ public:
 
   void FinishLoad() override {
     data_.clear();
-    
+
     int max_cnt_feat = 0;
     for (data_size_t i = 0; i < num_data_; ++i) {
       max_cnt_feat = std::max(max_cnt_feat, static_cast<int>(push_buf_[i].size()));
@@ -268,7 +293,7 @@ public:
     if (shift_ == 0 || shift_ == 8) {
       Log::Fatal("");
     }
-    row_ptr_offset_.resize(((num_data_ + 1) >> shift_ ) + 1, 0);
+    row_ptr_offset_.resize(((num_data_ + 1) >> shift_) + 1, 0);
     row_ptr_.resize(num_data_ + 1, 0);
     data_size_t cur_pos = 0;
     for (data_size_t i = 0; i < num_data_; ++i) {
@@ -372,13 +397,13 @@ uint32_t MultiValDenseBinIterator<VAL_T>::Get(data_size_t idx) {
       return bin_data_->data_[i] - min_bin_ + offset_;
     }
   }
-  return default_bin_;
+  return most_freq_bin_;
 }
 
 
 template <typename VAL_T>
-BinIterator* MultiValDenseBin<VAL_T>::GetIterator(uint32_t min_bin, uint32_t max_bin, uint32_t default_bin) const {
-  return new MultiValDenseBinIterator<VAL_T>(this, min_bin, max_bin, default_bin);
+BinIterator* MultiValDenseBin<VAL_T>::GetIterator(uint32_t min_bin, uint32_t max_bin, uint32_t most_freq_bin) const {
+  return new MultiValDenseBinIterator<VAL_T>(this, min_bin, max_bin, most_freq_bin);
 }
 
 
