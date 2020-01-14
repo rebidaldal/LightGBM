@@ -34,13 +34,13 @@ class FeatureGroup {
     std::vector<std::unique_ptr<BinMapper>>* bin_mappers,
     data_size_t num_data) : num_feature_(num_feature), is_multi_val_(is_multi_val), is_sparse_(false) {
     CHECK(static_cast<int>(bin_mappers->size()) == num_feature);
-    // use bin at zero to store default_bin
+    // use bin at zero to store most_freq_bin
     num_total_bin_ = 1;
     bin_offsets_.emplace_back(num_total_bin_);
     for (int i = 0; i < num_feature_; ++i) {
       bin_mappers_.emplace_back(bin_mappers->at(i).release());
       auto num_bin = bin_mappers_[i]->num_bin();
-      if (bin_mappers_[i]->GetDefaultBin() == 0) {
+      if (bin_mappers_[i]->GetMostFreqBin() == 0) {
         num_bin -= 1;
       }
       num_total_bin_ += num_bin;
@@ -58,7 +58,7 @@ class FeatureGroup {
     for (int i = 0; i < num_feature_; ++i) {
       bin_mappers_.emplace_back(bin_mappers->at(i).release());
       auto num_bin = bin_mappers_[i]->num_bin();
-      if (bin_mappers_[i]->GetDefaultBin() == 0) {
+      if (bin_mappers_[i]->GetMostFreqBin() == 0) {
         num_bin -= 1;
       }
       num_total_bin_ += num_bin;
@@ -96,7 +96,7 @@ class FeatureGroup {
     for (int i = 0; i < num_feature_; ++i) {
       bin_mappers_.emplace_back(new BinMapper(memory_ptr));
       auto num_bin = bin_mappers_[i]->num_bin();
-      if (bin_mappers_[i]->GetDefaultBin() == 0) {
+      if (bin_mappers_[i]->GetMostFreqBin() == 0) {
         num_bin -= 1;
       }
       num_total_bin_ += num_bin;
@@ -129,9 +129,9 @@ class FeatureGroup {
   */
   inline void PushData(int tid, int sub_feature_idx, data_size_t line_idx, double value) {
     uint32_t bin = bin_mappers_[sub_feature_idx]->ValueToBin(value);
-    if (bin == bin_mappers_[sub_feature_idx]->GetDefaultBin()) { return; }
+    if (bin == bin_mappers_[sub_feature_idx]->GetMostFreqBin()) { return; }
     bin += bin_offsets_[sub_feature_idx];
-    if (bin_mappers_[sub_feature_idx]->GetDefaultBin() == 0) {
+    if (bin_mappers_[sub_feature_idx]->GetMostFreqBin() == 0) {
       bin -= 1;
     }
     bin_data_->Push(tid, line_idx, bin);
@@ -144,8 +144,20 @@ class FeatureGroup {
   inline BinIterator* SubFeatureIterator(int sub_feature) {
     uint32_t min_bin = bin_offsets_[sub_feature];
     uint32_t max_bin = bin_offsets_[sub_feature + 1] - 1;
-    uint32_t default_bin = bin_mappers_[sub_feature]->GetDefaultBin();
-    return bin_data_->GetIterator(min_bin, max_bin, default_bin);
+    uint32_t most_freq_bin = bin_mappers_[sub_feature]->GetMostFreqBin();
+    return bin_data_->GetIterator(min_bin, max_bin, most_freq_bin);
+  }
+
+  /*!
+   * \brief Returns a BinIterator that can access the entire feature group's raw data.
+   *        The RawGet() function of the iterator should be called for best efficiency.
+   * \return A pointer to the BinIterator object
+   */
+  inline BinIterator* FeatureGroupIterator() {
+    uint32_t min_bin = bin_offsets_[0];
+    uint32_t max_bin = bin_offsets_.back() - 1;
+    uint32_t most_freq_bin = 0;
+    return bin_data_->GetIterator(min_bin, max_bin, most_freq_bin);
   }
 
   inline data_size_t Split(
@@ -159,12 +171,13 @@ class FeatureGroup {
     uint32_t min_bin = bin_offsets_[sub_feature];
     uint32_t max_bin = bin_offsets_[sub_feature + 1] - 1;
     uint32_t default_bin = bin_mappers_[sub_feature]->GetDefaultBin();
+    uint32_t most_freq_bin = bin_mappers_[sub_feature]->GetMostFreqBin();
     if (bin_mappers_[sub_feature]->bin_type() == BinType::NumericalBin) {
       auto missing_type = bin_mappers_[sub_feature]->missing_type();
-      return bin_data_->Split(min_bin, max_bin, default_bin, missing_type, default_left,
+      return bin_data_->Split(min_bin, max_bin, default_bin, most_freq_bin, missing_type, default_left,
                               *threshold, data_indices, num_data, lte_indices, gt_indices);
     } else {
-      return bin_data_->SplitCategorical(min_bin, max_bin, default_bin, threshold, num_threshold, data_indices, num_data, lte_indices, gt_indices);
+      return bin_data_->SplitCategorical(min_bin, max_bin, most_freq_bin, threshold, num_threshold, data_indices, num_data, lte_indices, gt_indices);
     }
   }
   /*!

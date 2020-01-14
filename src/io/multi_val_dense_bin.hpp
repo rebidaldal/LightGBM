@@ -31,6 +31,7 @@ public:
     }
   }
   inline uint32_t Get(data_size_t idx) override;
+  inline uint32_t RawGet(data_size_t idx) override { return idx; }
   inline void Reset(data_size_t) override {}
 
 private:
@@ -145,7 +146,7 @@ public:
   }
 
   data_size_t Split(
-    uint32_t min_bin, uint32_t max_bin, uint32_t default_bin, MissingType missing_type, bool default_left,
+    uint32_t min_bin, uint32_t max_bin, uint32_t default_bin, uint32_t most_freq_bin, MissingType missing_type, bool default_left,
     uint32_t threshold, data_size_t* data_indices, data_size_t num_data,
     data_size_t* lte_indices, data_size_t* gt_indices) const override {
     if (num_data <= 0) { return 0; }
