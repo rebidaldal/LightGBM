@@ -909,7 +909,7 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
       OMP_LOOP_EX_BEGIN();
       int group = used_group[gi];
       // feature is not used
-      auto data_ptr = hist_data + group_bin_boundaries_[group];
+      auto data_ptr = hist_data + group_bin_boundaries_[group] * 2;
       const int num_bin = feature_groups_[group]->num_total_bin_;
       std::memset(reinterpret_cast<void*>(data_ptr), 0, 2 * num_bin * sizeof(double));
       // construct histograms for smaller leaf
@@ -938,7 +938,7 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
       OMP_LOOP_EX_BEGIN();
       int group = used_group[gi];
       // feature is not used
-      auto data_ptr = hist_data + group_bin_boundaries_[group];
+      auto data_ptr = hist_data + group_bin_boundaries_[group] * 2;
       const int num_bin = feature_groups_[group]->num_total_bin_;
       std::memset(reinterpret_cast<void*>(data_ptr), 0, 2 * num_bin * sizeof(double));
       // construct histograms for smaller leaf
