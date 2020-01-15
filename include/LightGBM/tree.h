@@ -23,7 +23,7 @@ namespace LightGBM {
 * \brief Tree model
 */
 class Tree {
- public:
+public:
   /*!
   * \brief Constructor
   * \param max_leaves The number of max leaves
@@ -58,9 +58,9 @@ class Tree {
   * \return The index of new leaf.
   */
   int Split(int leaf, int feature, int real_feature, uint32_t threshold_bin,
-            double threshold_double, double left_value, double right_value,
-            int left_cnt, int right_cnt, double left_weight, double right_weight,
-            float gain, MissingType missing_type, bool default_left);
+    double threshold_double, double left_value, double right_value,
+    int left_cnt, int right_cnt, double left_weight, double right_weight,
+    float gain, MissingType missing_type, bool default_left);
 
   /*!
   * \brief Performing a split on tree leaves, with categorical feature
@@ -81,8 +81,8 @@ class Tree {
   * \return The index of new leaf.
   */
   int SplitCategorical(int leaf, int feature, int real_feature, const uint32_t* threshold_bin, int num_threshold_bin,
-                       const uint32_t* threshold, int num_threshold, double left_value, double right_value,
-                       int left_cnt, int right_cnt, double left_weight, double right_weight, float gain, MissingType missing_type);
+    const uint32_t* threshold, int num_threshold, double left_value, double right_value,
+    int left_cnt, int right_cnt, double left_weight, double right_weight, float gain, MissingType missing_type);
 
   /*! \brief Get the output of one leaf */
   inline double LeafOutput(int leaf) const { return leaf_value_[leaf]; }
@@ -99,8 +99,8 @@ class Tree {
   * \param score Will add prediction to score
   */
   void AddPredictionToScore(const Dataset* data,
-                            data_size_t num_data,
-                            double* score) const;
+    data_size_t num_data,
+    double* score) const;
 
   /*!
   * \brief Adding prediction value of this tree model to scores
@@ -110,8 +110,8 @@ class Tree {
   * \param score Will add prediction to score
   */
   void AddPredictionToScore(const Dataset* data,
-                            const data_size_t* used_data_indices,
-                            data_size_t num_data, double* score) const;
+    const data_size_t* used_data_indices,
+    data_size_t num_data, double* score) const;
 
   /*!
   * \brief Prediction on one record
@@ -211,9 +211,13 @@ class Tree {
     (*decision_type) |= (input << 2);
   }
 
+  inline int NextLeafId() const {
+    return num_leaves_ - 1;
+  }
+
   void RecomputeMaxDepth();
 
- private:
+private:
   std::string NumericalDecisionIfElse(int node) const;
 
   std::string CategoricalDecisionIfElse(int node) const;
@@ -226,7 +230,7 @@ class Tree {
       }
     }
     if ((missing_type == 1 && IsZero(fval))
-        || (missing_type == 2 && std::isnan(fval))) {
+      || (missing_type == 2 && std::isnan(fval))) {
       if (GetDecisionType(decision_type_[node], kDefaultLeftMask)) {
         return left_child_[node];
       } else {
@@ -243,7 +247,7 @@ class Tree {
   inline int NumericalDecisionInner(uint32_t fval, int node, uint32_t default_bin, uint32_t max_bin) const {
     uint8_t missing_type = GetMissingType(decision_type_[node]);
     if ((missing_type == 1 && fval == default_bin)
-        || (missing_type == 2 && fval == max_bin)) {
+      || (missing_type == 2 && fval == max_bin)) {
       if (GetDecisionType(decision_type_[node], kDefaultLeftMask)) {
         return left_child_[node];
       } else {
@@ -271,7 +275,7 @@ class Tree {
     }
     int cat_idx = static_cast<int>(threshold_[node]);
     if (Common::FindInBitset(cat_threshold_.data() + cat_boundaries_[cat_idx],
-                             cat_boundaries_[cat_idx + 1] - cat_boundaries_[cat_idx], int_fval)) {
+      cat_boundaries_[cat_idx + 1] - cat_boundaries_[cat_idx], int_fval)) {
       return left_child_[node];
     }
     return right_child_[node];
@@ -280,7 +284,7 @@ class Tree {
   inline int CategoricalDecisionInner(uint32_t fval, int node) const {
     int cat_idx = static_cast<int>(threshold_in_bin_[node]);
     if (Common::FindInBitset(cat_threshold_inner_.data() + cat_boundaries_inner_[cat_idx],
-                             cat_boundaries_inner_[cat_idx + 1] - cat_boundaries_inner_[cat_idx], fval)) {
+      cat_boundaries_inner_[cat_idx + 1] - cat_boundaries_inner_[cat_idx], fval)) {
       return left_child_[node];
     }
     return right_child_[node];
@@ -303,7 +307,8 @@ class Tree {
   }
 
   inline void Split(int leaf, int feature, int real_feature, double left_value, double right_value, int left_cnt, int right_cnt,
-                    double left_weight, double right_weight, float gain);
+    double left_weight, double right_weight, float gain);
+
   /*!
   * \brief Find leaf index of which record belongs by features
   * \param feature_values Feature value of this record
