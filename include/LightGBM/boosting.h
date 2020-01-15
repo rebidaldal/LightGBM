@@ -82,7 +82,7 @@ class LIGHTGBM_EXPORT Boosting {
   * \param hessians nullptr for using default objective, otherwise use self-defined boosting
   * \return True if cannot train anymore
   */
-  virtual bool TrainOneIter(const score_t* gradients, const score_t* hessians) = 0;
+  virtual bool TrainOneIter(const score_t* gh) = 0;
 
   /*!
   * \brief Rollback one iteration

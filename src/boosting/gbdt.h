@@ -141,7 +141,7 @@ class GBDT : public GBDTBase {
   * \param hessians nullptr for using default objective, otherwise use self-defined boosting
   * \return True if cannot train any more
   */
-  bool TrainOneIter(const score_t* gradients, const score_t* hessians) override;
+  bool TrainOneIter(const score_t* gh) override;
 
   /*!
   * \brief Rollback one iteration
@@ -457,9 +457,7 @@ class GBDT : public GBDTBase {
   /*! \brief Max feature index of training data*/
   int max_feature_idx_;
   /*! \brief First order derivative of training data */
-  std::vector<score_t> gradients_;
-  /*! \brief Secend order derivative of training data */
-  std::vector<score_t> hessians_;
+  std::vector<score_t> gh_;
   /*! \brief Store the indices of in-bag data */
   std::vector<data_size_t> bag_data_indices_;
   /*! \brief Number of in-bag data */
@@ -498,7 +496,6 @@ class GBDT : public GBDTBase {
   std::unique_ptr<Dataset> tmp_subset_;
   bool is_use_subset_;
   std::vector<bool> class_need_train_;
-  bool is_constant_hessian_;
   std::unique_ptr<ObjectiveFunction> loaded_objective_;
   bool average_output_;
   bool need_re_bagging_;

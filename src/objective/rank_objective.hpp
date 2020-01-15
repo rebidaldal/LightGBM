@@ -72,16 +72,15 @@ class LambdarankNDCG: public ObjectiveFunction {
     ConstructSigmoidTable();
   }
 
-  void GetGradients(const double* score, score_t* gradients,
-                    score_t* hessians) const override {
+  void GetGradients(const double* score, score_t* gh) const override {
     #pragma omp parallel for schedule(guided)
     for (data_size_t i = 0; i < num_queries_; ++i) {
-      GetGradientsForOneQuery(score, gradients, hessians, i);
+      GetGradientsForOneQuery(score, gh, i);
     }
   }
 
   inline void GetGradientsForOneQuery(const double* score,
-              score_t* lambdas, score_t* hessians, data_size_t query_id) const {
+              score_t* gh, data_size_t query_id) const {
     // get doc boundary for current query
     const data_size_t start = query_boundaries_[query_id];
     const data_size_t cnt =
@@ -91,12 +90,11 @@ class LambdarankNDCG: public ObjectiveFunction {
     // add pointers with offset
     const label_t* label = label_ + start;
     score += start;
-    lambdas += start;
-    hessians += start;
+    gh += start * 2;
     // initialize with zero
     for (data_size_t i = 0; i < cnt; ++i) {
-      lambdas[i] = 0.0f;
-      hessians[i] = 0.0f;
+      GetGrad(gh, i) = 0.0f;
+      GetHess(gh, i) = 0.0f;
     }
     // get sorted indices for scores
     std::vector<data_size_t> sorted_idx;
@@ -155,27 +153,27 @@ class LambdarankNDCG: public ObjectiveFunction {
         p_hessian *= sigmoid_ * sigmoid_ * delta_pair_NDCG;
         high_sum_lambda += p_lambda;
         high_sum_hessian += p_hessian;
-        lambdas[low] -= static_cast<score_t>(p_lambda);
-        hessians[low] += static_cast<score_t>(p_hessian);
+        GetGrad(gh, low) -= static_cast<score_t>(p_lambda);
+        GetHess(gh, low) += static_cast<score_t>(p_hessian);
         // lambda is negative, so use minus to accumulate
         sum_lambdas -= 2 * p_lambda;
       }
       // update
-      lambdas[high] += static_cast<score_t>(high_sum_lambda);
-      hessians[high] += static_cast<score_t>(high_sum_hessian);
+      GetGrad(gh, high) += static_cast<score_t>(high_sum_lambda);
+      GetHess(gh, high) += static_cast<score_t>(high_sum_hessian);
     }
     if (norm_ && sum_lambdas > 0) {
       double norm_factor = std::log2(1 + sum_lambdas) / sum_lambdas;
       for (data_size_t i = 0; i < cnt; ++i) {
-        lambdas[i] = static_cast<score_t>(lambdas[i] * norm_factor);
-        hessians[i] = static_cast<score_t>(hessians[i] * norm_factor);
+        GetGrad(gh, i) = static_cast<score_t>(GetGrad(gh, i) * norm_factor);
+        GetHess(gh, i) = static_cast<score_t>(GetHess(gh, i) * norm_factor);
       }
     }
     // if need weights
     if (weights_ != nullptr) {
       for (data_size_t i = 0; i < cnt; ++i) {
-        lambdas[i] = static_cast<score_t>(lambdas[i] * weights_[start + i]);
-        hessians[i] = static_cast<score_t>(hessians[i] * weights_[start + i]);
+        GetGrad(gh, i) = static_cast<score_t>(GetGrad(gh, i) * weights_[start + i]);
+        GetHess(gh, i) = static_cast<score_t>(GetHess(gh, i) * weights_[start + i]);
       }
     }
   }

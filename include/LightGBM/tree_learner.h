@@ -33,9 +33,8 @@ class TreeLearner {
   /*!
   * \brief Initialize tree learner with training dataset
   * \param train_data The used training data
-  * \param is_constant_hessian True if all hessians share the same value
   */
-  virtual void Init(const Dataset* train_data, bool is_constant_hessian) = 0;
+  virtual void Init(const Dataset* train_data) = 0;
 
   virtual void ResetTrainingData(const Dataset* train_data) = 0;
 
@@ -52,16 +51,15 @@ class TreeLearner {
   * \param is_constant_hessian True if all hessians share the same value
   * \return A trained tree
   */
-  virtual Tree* Train(const score_t* gradients, const score_t* hessians, bool is_constant_hessian,
-                      const Json& forced_split_json) = 0;
+  virtual Tree* Train(const score_t* gh, const Json& forced_split_json) = 0;
 
   /*!
   * \brief use an existing tree to fit the new gradients and hessians.
   */
-  virtual Tree* FitByExistingTree(const Tree* old_tree, const score_t* gradients, const score_t* hessians) const = 0;
+  virtual Tree* FitByExistingTree(const Tree* old_tree, const score_t* gh) const = 0;
 
   virtual Tree* FitByExistingTree(const Tree* old_tree, const std::vector<int>& leaf_pred,
-                                  const score_t* gradients, const score_t* hessians) = 0;
+                                  const score_t* gh) = 0;
 
   /*!
   * \brief Set bagging data

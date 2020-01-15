@@ -20,8 +20,8 @@ FeatureParallelTreeLearner<TREELEARNER_T>::~FeatureParallelTreeLearner() {
 }
 
 template <typename TREELEARNER_T>
-void FeatureParallelTreeLearner<TREELEARNER_T>::Init(const Dataset* train_data, bool is_constant_hessian) {
-  TREELEARNER_T::Init(train_data, is_constant_hessian);
+void FeatureParallelTreeLearner<TREELEARNER_T>::Init(const Dataset* train_data) {
+  TREELEARNER_T::Init(train_data);
   rank_ = Network::rank();
   num_machines_ = Network::num_machines();
   input_buffer_.resize((sizeof(SplitInfo) + sizeof(uint32_t) * this->config_->max_cat_threshold) * 2);

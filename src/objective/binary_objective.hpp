@@ -104,7 +104,7 @@ class BinaryLogloss: public ObjectiveFunction {
     label_weights_[1] *= scale_pos_weight_;
   }
 
-  void GetGradients(const double* score, score_t* gradients, score_t* hessians) const override {
+  void GetGradients(const double* score, score_t* gh) const override {
     if (!need_train_) {
       return;
     }
@@ -118,8 +118,8 @@ class BinaryLogloss: public ObjectiveFunction {
         // calculate gradients and hessians
         const double response = -label * sigmoid_ / (1.0f + std::exp(label * sigmoid_ * score[i]));
         const double abs_response = fabs(response);
-        gradients[i] = static_cast<score_t>(response * label_weight);
-        hessians[i] = static_cast<score_t>(abs_response * (sigmoid_ - abs_response) * label_weight);
+        GetGrad(gh, i) = static_cast<score_t>(response * label_weight);
+        GetHess(gh, i) = static_cast<score_t>(abs_response * (sigmoid_ - abs_response) * label_weight);
       }
     } else {
       #pragma omp parallel for schedule(static)
@@ -131,8 +131,8 @@ class BinaryLogloss: public ObjectiveFunction {
         // calculate gradients and hessians
         const double response = -label * sigmoid_ / (1.0f + std::exp(label * sigmoid_ * score[i]));
         const double abs_response = fabs(response);
-        gradients[i] = static_cast<score_t>(response * label_weight  * weights_[i]);
-        hessians[i] = static_cast<score_t>(abs_response * (sigmoid_ - abs_response) * label_weight * weights_[i]);
+        GetGrad(gh, i) = static_cast<score_t>(response * label_weight  * weights_[i]);
+        GetHess(gh, i) = static_cast<score_t>(abs_response * (sigmoid_ - abs_response) * label_weight * weights_[i]);
       }
     }
   }

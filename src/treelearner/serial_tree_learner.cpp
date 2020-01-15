@@ -48,11 +48,10 @@ SerialTreeLearner::~SerialTreeLearner() {
   #endif
 }
 
-void SerialTreeLearner::Init(const Dataset* train_data, bool is_constant_hessian) {
+void SerialTreeLearner::Init(const Dataset* train_data) {
   train_data_ = train_data;
   num_data_ = train_data_->num_data();
   num_features_ = train_data_->num_features();
-  is_constant_hessian_ = is_constant_hessian;
   int max_cache_size = 0;
   // Get the max size of pool
   if (config_->histogram_pool_size <= 0) {
@@ -60,7 +59,7 @@ void SerialTreeLearner::Init(const Dataset* train_data, bool is_constant_hessian
   } else {
     size_t total_histogram_size = 0;
     for (int i = 0; i < train_data_->num_features(); ++i) {
-      total_histogram_size += sizeof(HistogramBinEntry) * train_data_->FeatureNumBin(i);
+      total_histogram_size += 2 * sizeof(double) * train_data_->FeatureNumBin(i);
     }
     max_cache_size = static_cast<int>(config_->histogram_pool_size * 1024 * 1024 / total_histogram_size);
   }
@@ -90,8 +89,7 @@ void SerialTreeLearner::Init(const Dataset* train_data, bool is_constant_hessian
   is_feature_used_.resize(num_features_);
   valid_feature_indices_ = train_data_->ValidFeatureIndices();
   // initialize ordered gradients and hessians
-  ordered_gradients_.resize(num_data_);
-  ordered_hessians_.resize(num_data_);
+  ordered_gh_.resize(num_data_ * 2);
   // if has ordered bin, need to allocate a buffer to fast split
   if (has_ordered_bin_) {
     is_data_in_leaf_.resize(num_data_);
@@ -126,8 +124,7 @@ void SerialTreeLearner::ResetTrainingData(const Dataset* train_data) {
   data_partition_->ResetNumData(num_data_);
 
   // initialize ordered gradients and hessians
-  ordered_gradients_.resize(num_data_);
-  ordered_hessians_.resize(num_data_);
+  ordered_gh_.resize(num_data_ * 2);
   // if has ordered bin, need to allocate a buffer to fast split
   if (has_ordered_bin_) {
     is_data_in_leaf_.resize(num_data_);
@@ -148,7 +145,7 @@ void SerialTreeLearner::ResetConfig(const Config* config) {
     } else {
       size_t total_histogram_size = 0;
       for (int i = 0; i < train_data_->num_features(); ++i) {
-        total_histogram_size += sizeof(HistogramBinEntry) * train_data_->FeatureNumBin(i);
+        total_histogram_size += 2 * sizeof(double) * train_data_->FeatureNumBin(i);
       }
       max_cache_size = static_cast<int>(config_->histogram_pool_size * 1024 * 1024 / total_histogram_size);
     }
@@ -170,10 +167,8 @@ void SerialTreeLearner::ResetConfig(const Config* config) {
   }
 }
 
-Tree* SerialTreeLearner::Train(const score_t* gradients, const score_t *hessians, bool is_constant_hessian, const Json& forced_split_json) {
-  gradients_ = gradients;
-  hessians_ = hessians;
-  is_constant_hessian_ = is_constant_hessian;
+Tree* SerialTreeLearner::Train(const score_t* gh, const Json& forced_split_json) {
+  gh_ = gh;
   #ifdef TIMETAG
   auto start_time = std::chrono::steady_clock::now();
   #endif
@@ -236,7 +231,7 @@ Tree* SerialTreeLearner::Train(const score_t* gradients, const score_t *hessians
   return tree.release();
 }
 
-Tree* SerialTreeLearner::FitByExistingTree(const Tree* old_tree, const score_t* gradients, const score_t *hessians) const {
+Tree* SerialTreeLearner::FitByExistingTree(const Tree* old_tree, const score_t* gh) const {
   auto tree = std::unique_ptr<Tree>(new Tree(*old_tree));
   CHECK(data_partition_->num_leaves() >= tree->num_leaves());
   OMP_INIT_EX();
@@ -249,8 +244,8 @@ Tree* SerialTreeLearner::FitByExistingTree(const Tree* old_tree, const score_t* 
     double sum_hess = kEpsilon;
     for (data_size_t j = 0; j < cnt_leaf_data; ++j) {
       auto idx = tmp_idx[j];
-      sum_grad += gradients[idx];
-      sum_hess += hessians[idx];
+      sum_grad += GetGrad(gh, idx);
+      sum_hess += GetHess(gh, idx);
     }
     double output = FeatureHistogram::CalculateSplittedLeafOutput(sum_grad, sum_hess,
                                                                   config_->lambda_l1, config_->lambda_l2, config_->max_delta_step);
@@ -263,9 +258,9 @@ Tree* SerialTreeLearner::FitByExistingTree(const Tree* old_tree, const score_t* 
   return tree.release();
 }
 
-Tree* SerialTreeLearner::FitByExistingTree(const Tree* old_tree, const std::vector<int>& leaf_pred, const score_t* gradients, const score_t *hessians) {
+Tree* SerialTreeLearner::FitByExistingTree(const Tree* old_tree, const std::vector<int>& leaf_pred, const score_t* gh) {
   data_partition_->ResetByLeafPred(leaf_pred, old_tree->num_leaves());
-  return FitByExistingTree(old_tree, gradients, hessians);
+  return FitByExistingTree(old_tree, gh);
 }
 
 std::vector<int8_t> SerialTreeLearner::GetUsedFeatures(bool is_tree_level) {
@@ -342,11 +337,11 @@ void SerialTreeLearner::BeforeTrain() {
   // Sumup for root
   if (data_partition_->leaf_count(0) == num_data_) {
     // use all data
-    smaller_leaf_splits_->Init(gradients_, hessians_);
+    smaller_leaf_splits_->Init(gh_);
 
   } else {
     // use bagging, only use part of data
-    smaller_leaf_splits_->Init(0, data_partition_.get(), gradients_, hessians_);
+    smaller_leaf_splits_->Init(0, data_partition_.get(), gh_);
   }
 
   larger_leaf_splits_->Init();
@@ -498,22 +493,20 @@ void SerialTreeLearner::ConstructHistograms(const std::vector<int8_t>& is_featur
   auto start_time = std::chrono::steady_clock::now();
   #endif
   // construct smaller leaf
-  HistogramBinEntry* ptr_smaller_leaf_hist_data = smaller_leaf_histogram_array_[0].RawData() - 1;
+  double* ptr_smaller_leaf_hist_data = smaller_leaf_histogram_array_[0].RawData() - 2;
   train_data_->ConstructHistograms(is_feature_used,
                                    smaller_leaf_splits_->data_indices(), smaller_leaf_splits_->num_data_in_leaf(),
                                    smaller_leaf_splits_->LeafIndex(),
-                                   &ordered_bins_, gradients_, hessians_,
-                                   ordered_gradients_.data(), ordered_hessians_.data(), is_constant_hessian_,
+                                   &ordered_bins_, gh_, ordered_gh_.data(), 
                                    ptr_smaller_leaf_hist_data);
 
   if (larger_leaf_histogram_array_ != nullptr && !use_subtract) {
     // construct larger leaf
-    HistogramBinEntry* ptr_larger_leaf_hist_data = larger_leaf_histogram_array_[0].RawData() - 1;
+    double* ptr_larger_leaf_hist_data = larger_leaf_histogram_array_[0].RawData() - 2;
     train_data_->ConstructHistograms(is_feature_used,
                                      larger_leaf_splits_->data_indices(), larger_leaf_splits_->num_data_in_leaf(),
                                      larger_leaf_splits_->LeafIndex(),
-                                     &ordered_bins_, gradients_, hessians_,
-                                     ordered_gradients_.data(), ordered_hessians_.data(), is_constant_hessian_,
+                                     &ordered_bins_, gh_, ordered_gh_.data(),
                                      ptr_larger_leaf_hist_data);
   }
   #ifdef TIMETAG

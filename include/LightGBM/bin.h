@@ -29,36 +29,21 @@ enum MissingType {
   NaN
 };
 
-/*! \brief Store data for one histogram bin */
-struct HistogramBinEntry {
- public:
-  /*! \brief Sum of gradients on this bin */
-  double sum_gradients = 0.0f;
-  /*! \brief Sum of hessians on this bin */
-  double sum_hessians = 0.0f;
-  /*! \brief Number of data on this bin */
-  data_size_t cnt = 0;
-  /*!
-  * \brief Sum up (reducers) functions for histogram bin
-  */
-  inline static void SumReducer(const char *src, char *dst, int type_size, comm_size_t len) {
-    comm_size_t used_size = 0;
-    const HistogramBinEntry* p1;
-    HistogramBinEntry* p2;
-    while (used_size < len) {
-      // convert
-      p1 = reinterpret_cast<const HistogramBinEntry*>(src);
-      p2 = reinterpret_cast<HistogramBinEntry*>(dst);
-      // add
-      p2->cnt += p1->cnt;
-      p2->sum_gradients += p1->sum_gradients;
-      p2->sum_hessians += p1->sum_hessians;
-      src += type_size;
-      dst += type_size;
-      used_size += type_size;
-    }
+inline static void HistogramSumReducer(const char* src, char* dst, int type_size, comm_size_t len) {
+  comm_size_t used_size = 0;
+  const double* p1;
+  double* p2;
+  while (used_size < len) {
+    // convert
+    p1 = reinterpret_cast<const double*>(src);
+    p2 = reinterpret_cast<double*>(dst);
+    *p2 += *p1;
+    *(p2 + 1) += *(p1 + 1);
+    src += type_size;
+    dst += type_size;
+    used_size += type_size;
   }
-};
+}
 
 /*! \brief This class used to convert feature values into bin,
 *          and store some meta information for bin*/
@@ -251,18 +236,7 @@ class OrderedBin {
   * \param hessians Hessians, Note:non-ordered by leaf
   * \param out Output Result
   */
-  virtual void ConstructHistogram(int leaf, const score_t* gradients,
-    const score_t* hessians, HistogramBinEntry* out) const = 0;
-
-  /*!
-  * \brief Construct histogram by using this bin
-  *        Note: Unlike Bin, OrderedBin doesn't use ordered gradients and ordered hessians.
-  *        Because it is hard to know the relative index in one leaf for sparse bin, since we skipped zero bins.
-  * \param leaf Using which leaf's data to construct
-  * \param gradients Gradients, Note:non-ordered by leaf
-  * \param out Output Result
-  */
-  virtual void ConstructHistogram(int leaf, const score_t* gradients, HistogramBinEntry* out) const = 0;
+  virtual void ConstructHistogram(int leaf, const score_t* gh, double* out) const = 0;
 
   /*!
   * \brief Split current bin, and perform re-order by leaf
@@ -359,31 +333,13 @@ class Bin {
   */
   virtual void ConstructHistogram(
     const data_size_t* data_indices, data_size_t start, data_size_t end,
-    const score_t* ordered_gradients, const score_t* ordered_hessians,
-    HistogramBinEntry* out) const = 0;
+    const score_t* ordered_gh,
+    double* out) const = 0;
 
   virtual void ConstructHistogram(data_size_t start, data_size_t end,
-    const score_t* ordered_gradients, const score_t* ordered_hessians,
-    HistogramBinEntry* out) const = 0;
+    const score_t* ordered_gh,
+    double* out) const = 0;
 
-  /*!
-  * \brief Construct histogram of this feature,
-  *        Note: We use ordered_gradients and ordered_hessians to improve cache hit chance
-  *        The naive solution is using gradients[data_indices[i]] for data_indices[i] to get gradients,
-  which is not cache friendly, since the access of memory is not continuous.
-  *        ordered_gradients and ordered_hessians are preprocessed, and they are re-ordered by data_indices.
-  *        Ordered_gradients[i] is aligned with data_indices[i]'s gradients (same for ordered_hessians).
-  * \param data_indices Used data indices in current leaf
-  * \param start start index in data_indices
-  * \param end end index in data_indices
-  * \param ordered_gradients Pointer to gradients, the data_indices[i]-th data's gradient is ordered_gradients[i]
-  * \param out Output Result
-  */
-  virtual void ConstructHistogram(const data_size_t* data_indices, data_size_t start, data_size_t end,
-                                  const score_t* ordered_gradients, HistogramBinEntry* out) const = 0;
-
-  virtual void ConstructHistogram(data_size_t start, data_size_t end,
-                                  const score_t* ordered_gradients, HistogramBinEntry* out) const = 0;
 
   /*!
   * \brief Split data according to threshold, if bin <= threshold, will put into left(lte_indices), else put into right(gt_indices)

@@ -27,7 +27,7 @@ class FeatureParallelTreeLearner: public TREELEARNER_T {
  public:
   explicit FeatureParallelTreeLearner(const Config* config);
   ~FeatureParallelTreeLearner();
-  void Init(const Dataset* train_data, bool is_constant_hessian) override;
+  void Init(const Dataset* train_data) override;
 
  protected:
   void BeforeTrain() override;
@@ -54,7 +54,7 @@ class DataParallelTreeLearner: public TREELEARNER_T {
  public:
   explicit DataParallelTreeLearner(const Config* config);
   ~DataParallelTreeLearner();
-  void Init(const Dataset* train_data, bool is_constant_hessian) override;
+  void Init(const Dataset* train_data) override;
   void ResetConfig(const Config* config) override;
 
  protected:
@@ -108,7 +108,7 @@ class VotingParallelTreeLearner: public TREELEARNER_T {
  public:
   explicit VotingParallelTreeLearner(const Config* config);
   ~VotingParallelTreeLearner() { }
-  void Init(const Dataset* train_data, bool is_constant_hessian) override;
+  void Init(const Dataset* train_data) override;
   void ResetConfig(const Config* config) override;
 
  protected:
@@ -181,8 +181,8 @@ class VotingParallelTreeLearner: public TREELEARNER_T {
   /*! \brief Store global histogram for larger leaf  */
   std::unique_ptr<FeatureHistogram[]> larger_leaf_histogram_array_global_;
 
-  std::vector<HistogramBinEntry> smaller_leaf_histogram_data_;
-  std::vector<HistogramBinEntry> larger_leaf_histogram_data_;
+  std::vector<double> smaller_leaf_histogram_data_;
+  std::vector<double> larger_leaf_histogram_data_;
   std::vector<FeatureMetainfo> feature_metas_;
 };
 

@@ -23,6 +23,7 @@
 
 namespace LightGBM {
 
+// Todo: use int64 for data
 /*! \brief Type of data size, it is better to use signed type*/
 typedef int32_t data_size_t;
 
@@ -70,6 +71,10 @@ typedef void(*AllgatherFunction)(char* input, comm_size_t input_size, const comm
 
 
 #define NO_SPECIFIC (-1)
+
+#define GetGrad(gh, i) (gh[ (i) * 2])
+
+#define GetHess(gh, i) (gh[ (i) * 2 + 1])
 
 }  // namespace LightGBM
 

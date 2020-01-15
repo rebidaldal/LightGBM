@@ -225,7 +225,7 @@ class Booster {
 
   bool TrainOneIter() {
     std::lock_guard<std::mutex> lock(mutex_);
-    return boosting_->TrainOneIter(nullptr, nullptr);
+    return boosting_->TrainOneIter(nullptr);
   }
 
   void Refit(const int32_t* leaf_preds, int32_t nrow, int32_t ncol) {
@@ -241,7 +241,20 @@ class Booster {
 
   bool TrainOneIter(const score_t* gradients, const score_t* hessians) {
     std::lock_guard<std::mutex> lock(mutex_);
-    return boosting_->TrainOneIter(gradients, hessians);
+    const data_size_t num_data = train_data_->num_data();
+    const data_size_t num_class = boosting_->NumberOfClasses();
+    std::vector<score_t> gh(num_data * 2 * num_class);
+    for (int c = 0; c < num_class; ++c) {
+      const size_t offset = c * num_data * 2;
+      const auto ptr_gh = gh.data() + offset * 2;
+      const auto ptr_g = gradients + offset;
+      const auto ptr_h = hessians + offset;
+      for (data_size_t i = 0; i < num_data; ++i) {
+        GetGrad(ptr_gh, i) = ptr_g[i];
+        GetHess(ptr_gh, i) = ptr_h[i];
+      }
+    }
+    return boosting_->TrainOneIter(gh.data());
   }
 
   void RollbackOneIter() {

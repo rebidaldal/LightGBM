@@ -73,22 +73,22 @@ class CrossEntropy: public ObjectiveFunction {
     }
   }
 
-  void GetGradients(const double* score, score_t* gradients, score_t* hessians) const override {
+  void GetGradients(const double* score, score_t* gh) const override {
     if (weights_ == nullptr) {
       // compute pointwise gradients and hessians with implied unit weights
       #pragma omp parallel for schedule(static)
       for (data_size_t i = 0; i < num_data_; ++i) {
         const double z = 1.0f / (1.0f + std::exp(-score[i]));
-        gradients[i] = static_cast<score_t>(z - label_[i]);
-        hessians[i] = static_cast<score_t>(z * (1.0f - z));
+        GetGrad(gh, i) = static_cast<score_t>(z - label_[i]);
+        GetHess(gh, i) = static_cast<score_t>(z * (1.0f - z));
       }
     } else {
       // compute pointwise gradients and hessians with given weights
       #pragma omp parallel for schedule(static)
       for (data_size_t i = 0; i < num_data_; ++i) {
         const double z = 1.0f / (1.0f + std::exp(-score[i]));
-        gradients[i] = static_cast<score_t>((z - label_[i]) * weights_[i]);
-        hessians[i] = static_cast<score_t>(z * (1.0f - z) * weights_[i]);
+        GetGrad(gh, i) = static_cast<score_t>((z - label_[i]) * weights_[i]);
+        GetHess(gh, i) = static_cast<score_t>(z * (1.0f - z) * weights_[i]);
       }
     }
   }
@@ -182,14 +182,14 @@ class CrossEntropyLambda: public ObjectiveFunction {
     }
   }
 
-  void GetGradients(const double* score, score_t* gradients, score_t* hessians) const override {
+  void GetGradients(const double* score, score_t* gh) const override {
     if (weights_ == nullptr) {
       // compute pointwise gradients and hessians with implied unit weights; exactly equivalent to CrossEntropy with unit weights
       #pragma omp parallel for schedule(static)
       for (data_size_t i = 0; i < num_data_; ++i) {
         const double z = 1.0f / (1.0f + std::exp(-score[i]));
-        gradients[i] = static_cast<score_t>(z - label_[i]);
-        hessians[i] = static_cast<score_t>(z * (1.0f - z));
+        GetGrad(gh, i) = static_cast<score_t>(z - label_[i]);
+        GetHess(gh, i) = static_cast<score_t>(z * (1.0f - z));
       }
     } else {
       // compute pointwise gradients and hessians with given weights
@@ -201,13 +201,13 @@ class CrossEntropyLambda: public ObjectiveFunction {
         const double hhat = std::log(1.0f + epf);
         const double z = 1.0f - std::exp(-w*hhat);
         const double enf = 1.0f / epf;  // = std::exp(-score[i]);
-        gradients[i] = static_cast<score_t>((1.0f - y / z) * w / (1.0f + enf));
+        GetGrad(gh, i) = static_cast<score_t>((1.0f - y / z) * w / (1.0f + enf));
         const double c = 1.0f / (1.0f - z);
         double d = 1.0f + epf;
         const double a = w * epf / (d * d);
         d = c - 1.0f;
         const double b = (c / (d * d) ) * (1.0f + w * epf - c);
-        hessians[i] = static_cast<score_t>(a * (1.0f + y * b));
+        GetHess(gh, i) = static_cast<score_t>(a * (1.0f + y * b));
       }
     }
   }

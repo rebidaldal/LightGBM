@@ -55,9 +55,9 @@ class DART: public GBDT {
   /*!
   * \brief one training iteration
   */
-  bool TrainOneIter(const score_t* gradient, const score_t* hessian) override {
+  bool TrainOneIter(const score_t* gh) override {
     is_update_score_cur_iter_ = false;
-    bool ret = GBDT::TrainOneIter(gradient, hessian);
+    bool ret = GBDT::TrainOneIter(gh);
     if (ret) {
       return ret;
     }

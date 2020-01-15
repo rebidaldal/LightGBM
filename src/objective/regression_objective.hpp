@@ -107,19 +107,18 @@ class RegressionL2loss: public ObjectiveFunction {
     weights_ = metadata.weights();
   }
 
-  void GetGradients(const double* score, score_t* gradients,
-                    score_t* hessians) const override {
+  void GetGradients(const double* score, score_t* gh) const override {
     if (weights_ == nullptr) {
       #pragma omp parallel for schedule(static)
       for (data_size_t i = 0; i < num_data_; ++i) {
-        gradients[i] = static_cast<score_t>(score[i] - label_[i]);
-        hessians[i] = 1.0f;
+        GetGrad(gh, i) = static_cast<score_t>(score[i] - label_[i]);
+        GetHess(gh, i) = 1.0f;
       }
     } else {
       #pragma omp parallel for schedule(static)
       for (data_size_t i = 0; i < num_data_; ++i) {
-        gradients[i] = static_cast<score_t>((score[i] - label_[i]) * weights_[i]);
-        hessians[i] = static_cast<score_t>(weights_[i]);
+        GetGrad(gh, i) = static_cast<score_t>((score[i] - label_[i]) * weights_[i]);
+        GetHess(gh, i) = static_cast<score_t>(weights_[i]);
       }
     }
   }
@@ -143,14 +142,6 @@ class RegressionL2loss: public ObjectiveFunction {
       str_buf << " sqrt";
     }
     return str_buf.str();
-  }
-
-  bool IsConstantHessian() const override {
-    if (weights_ == nullptr) {
-      return true;
-    } else {
-      return false;
-    }
   }
 
   double BoostFromScore(int) const override {
@@ -196,21 +187,20 @@ class RegressionL1loss: public RegressionL2loss {
 
   ~RegressionL1loss() {}
 
-  void GetGradients(const double* score, score_t* gradients,
-                    score_t* hessians) const override {
+  void GetGradients(const double* score, score_t* gh) const override {
     if (weights_ == nullptr) {
       #pragma omp parallel for schedule(static)
       for (data_size_t i = 0; i < num_data_; ++i) {
         const double diff = score[i] - label_[i];
-        gradients[i] = static_cast<score_t>(Common::Sign(diff));
-        hessians[i] = 1.0f;
+        GetGrad(gh, i) = static_cast<score_t>(Common::Sign(diff));
+        GetHess(gh, i) = 1.0f;
       }
     } else {
       #pragma omp parallel for schedule(static)
       for (data_size_t i = 0; i < num_data_; ++i) {
         const double diff = score[i] - label_[i];
-        gradients[i] = static_cast<score_t>(Common::Sign(diff) * weights_[i]);
-        hessians[i] = weights_[i];
+        GetGrad(gh, i) = static_cast<score_t>(Common::Sign(diff) * weights_[i]);
+        GetHess(gh, i) = weights_[i];
       }
     }
   }
@@ -292,39 +282,34 @@ class RegressionHuberLoss: public RegressionL2loss {
   ~RegressionHuberLoss() {
   }
 
-  void GetGradients(const double* score, score_t* gradients,
-                    score_t* hessians) const override {
+  void GetGradients(const double* score, score_t* gh) const override {
     if (weights_ == nullptr) {
       #pragma omp parallel for schedule(static)
       for (data_size_t i = 0; i < num_data_; ++i) {
         const double diff = score[i] - label_[i];
         if (std::abs(diff) <= alpha_) {
-          gradients[i] = static_cast<score_t>(diff);
+          GetGrad(gh, i) = static_cast<score_t>(diff);
         } else {
-          gradients[i] = static_cast<score_t>(Common::Sign(diff) * alpha_);
+          GetGrad(gh, i) = static_cast<score_t>(Common::Sign(diff) * alpha_);
         }
-        hessians[i] = 1.0f;
+        GetHess(gh, i) = 1.0f;
       }
     } else {
       #pragma omp parallel for schedule(static)
       for (data_size_t i = 0; i < num_data_; ++i) {
         const double diff = score[i] - label_[i];
         if (std::abs(diff) <= alpha_) {
-          gradients[i] = static_cast<score_t>(diff * weights_[i]);
+          GetGrad(gh, i) = static_cast<score_t>(diff * weights_[i]);
         } else {
-          gradients[i] = static_cast<score_t>(Common::Sign(diff) * weights_[i] * alpha_);
+          GetGrad(gh, i) = static_cast<score_t>(Common::Sign(diff) * weights_[i] * alpha_);
         }
-        hessians[i] = static_cast<score_t>(weights_[i]);
+        GetHess(gh, i) = static_cast<score_t>(weights_[i]);
       }
     }
   }
 
   const char* GetName() const override {
     return "huber";
-  }
-
-  bool IsConstantHessian() const override {
-    return false;
   }
 
  private:
@@ -345,31 +330,26 @@ class RegressionFairLoss: public RegressionL2loss {
 
   ~RegressionFairLoss() {}
 
-  void GetGradients(const double* score, score_t* gradients,
-                    score_t* hessians) const override {
+  void GetGradients(const double* score, score_t* gh) const override {
     if (weights_ == nullptr) {
       #pragma omp parallel for schedule(static)
       for (data_size_t i = 0; i < num_data_; ++i) {
         const double x = score[i] - label_[i];
-        gradients[i] = static_cast<score_t>(c_ * x / (std::fabs(x) + c_));
-        hessians[i] = static_cast<score_t>(c_ * c_ / ((std::fabs(x) + c_) * (std::fabs(x) + c_)));
+        GetGrad(gh, i) = static_cast<score_t>(c_ * x / (std::fabs(x) + c_));
+        GetHess(gh, i) = static_cast<score_t>(c_ * c_ / ((std::fabs(x) + c_) * (std::fabs(x) + c_)));
       }
     } else {
       #pragma omp parallel for schedule(static)
       for (data_size_t i = 0; i < num_data_; ++i) {
         const double x = score[i] - label_[i];
-        gradients[i] = static_cast<score_t>(c_ * x / (std::fabs(x) + c_) * weights_[i]);
-        hessians[i] = static_cast<score_t>(c_ * c_ / ((std::fabs(x) + c_) * (std::fabs(x) + c_)) * weights_[i]);
+        GetGrad(gh, i) = static_cast<score_t>(c_ * x / (std::fabs(x) + c_) * weights_[i]);
+        GetHess(gh, i) = static_cast<score_t>(c_ * c_ / ((std::fabs(x) + c_) * (std::fabs(x) + c_)) * weights_[i]);
       }
     }
   }
 
   const char* GetName() const override {
     return "fair";
-  }
-
-  bool IsConstantHessian() const override {
-    return false;
   }
 
  private:
@@ -423,19 +403,18 @@ class RegressionPoissonLoss: public RegressionL2loss {
    * so that its loss = s - label * log(s); a little awkward maybe.
    *
    */
-  void GetGradients(const double* score, score_t* gradients,
-                    score_t* hessians) const override {
+  void GetGradients(const double* score, score_t* gh) const override {
     if (weights_ == nullptr) {
       #pragma omp parallel for schedule(static)
       for (data_size_t i = 0; i < num_data_; ++i) {
-        gradients[i] = static_cast<score_t>(std::exp(score[i]) - label_[i]);
-        hessians[i] = static_cast<score_t>(std::exp(score[i] + max_delta_step_));
+        GetGrad(gh, i) = static_cast<score_t>(std::exp(score[i]) - label_[i]);
+        GetHess(gh, i) = static_cast<score_t>(std::exp(score[i] + max_delta_step_));
       }
     } else {
       #pragma omp parallel for schedule(static)
       for (data_size_t i = 0; i < num_data_; ++i) {
-        gradients[i] = static_cast<score_t>((std::exp(score[i]) - label_[i]) * weights_[i]);
-        hessians[i] = static_cast<score_t>(std::exp(score[i] + max_delta_step_) * weights_[i]);
+        GetGrad(gh, i) = static_cast<score_t>((std::exp(score[i]) - label_[i]) * weights_[i]);
+        GetHess(gh, i) = static_cast<score_t>(std::exp(score[i] + max_delta_step_) * weights_[i]);
       }
     }
   }
@@ -450,10 +429,6 @@ class RegressionPoissonLoss: public RegressionL2loss {
 
   double BoostFromScore(int) const override {
     return Common::SafeLog(RegressionL2loss::BoostFromScore(0));
-  }
-
-  bool IsConstantHessian() const override {
-    return false;
   }
 
  private:
@@ -473,29 +448,28 @@ class RegressionQuantileloss : public RegressionL2loss {
 
   ~RegressionQuantileloss() {}
 
-  void GetGradients(const double* score, score_t* gradients,
-                    score_t* hessians) const override {
+  void GetGradients(const double* score, score_t* gh) const override {
     if (weights_ == nullptr) {
       #pragma omp parallel for schedule(static)
       for (data_size_t i = 0; i < num_data_; ++i) {
         score_t delta = static_cast<score_t>(score[i] - label_[i]);
         if (delta >= 0) {
-          gradients[i] = (1.0f - alpha_);
+          GetGrad(gh, i) = (1.0f - alpha_);
         } else {
-          gradients[i] = -alpha_;
+          GetGrad(gh, i) = -alpha_;
         }
-        hessians[i] = 1.0f;
+        GetHess(gh, i) = 1.0f;
       }
     } else {
       #pragma omp parallel for schedule(static)
       for (data_size_t i = 0; i < num_data_; ++i) {
         score_t delta = static_cast<score_t>(score[i] - label_[i]);
         if (delta >= 0) {
-          gradients[i] = static_cast<score_t>((1.0f - alpha_) * weights_[i]);
+          GetGrad(gh, i) = static_cast<score_t>((1.0f - alpha_) * weights_[i]);
         } else {
-          gradients[i] = static_cast<score_t>(-alpha_ * weights_[i]);
+          GetGrad(gh, i) = static_cast<score_t>(-alpha_ * weights_[i]);
         }
-        hessians[i] = static_cast<score_t>(weights_[i]);
+        GetHess(gh, i) = static_cast<score_t>(weights_[i]);
       }
     }
   }
@@ -591,21 +565,20 @@ class RegressionMAPELOSS : public RegressionL1loss {
     }
   }
 
-  void GetGradients(const double* score, score_t* gradients,
-                    score_t* hessians) const override {
+  void GetGradients(const double* score, score_t* gh) const override {
     if (weights_ == nullptr) {
       #pragma omp parallel for schedule(static)
       for (data_size_t i = 0; i < num_data_; ++i) {
         const double diff = score[i] - label_[i];
-        gradients[i] = static_cast<score_t>(Common::Sign(diff) * label_weight_[i]);
-        hessians[i] = 1.0f;
+        GetGrad(gh, i) = static_cast<score_t>(Common::Sign(diff) * label_weight_[i]);
+        GetHess(gh, i) = 1.0f;
       }
     } else {
       #pragma omp parallel for schedule(static)
       for (data_size_t i = 0; i < num_data_; ++i) {
         const double diff = score[i] - label_[i];
-        gradients[i] = static_cast<score_t>(Common::Sign(diff) * label_weight_[i]);
-        hessians[i] = weights_[i];
+        GetGrad(gh, i) = static_cast<score_t>(Common::Sign(diff) * label_weight_[i]);
+        GetHess(gh, i) = weights_[i];
       }
     }
   }
@@ -645,10 +618,6 @@ class RegressionMAPELOSS : public RegressionL1loss {
     return "mape";
   }
 
-  bool IsConstantHessian() const override {
-    return true;
-  }
-
  private:
   std::vector<label_t> label_weight_;
 };
@@ -668,19 +637,18 @@ class RegressionGammaLoss : public RegressionPoissonLoss {
 
   ~RegressionGammaLoss() {}
 
-  void GetGradients(const double* score, score_t* gradients,
-                    score_t* hessians) const override {
+  void GetGradients(const double* score, score_t* gh) const override {
     if (weights_ == nullptr) {
       #pragma omp parallel for schedule(static)
       for (data_size_t i = 0; i < num_data_; ++i) {
-        gradients[i] = static_cast<score_t>(1.0 - label_[i] / std::exp(score[i]));
-        hessians[i] = static_cast<score_t>(label_[i] / std::exp(score[i]));
+        GetGrad(gh, i) = static_cast<score_t>(1.0 - label_[i] / std::exp(score[i]));
+        GetHess(gh, i) = static_cast<score_t>(label_[i] / std::exp(score[i]));
       }
     } else {
       #pragma omp parallel for schedule(static)
       for (data_size_t i = 0; i < num_data_; ++i) {
-        gradients[i] = static_cast<score_t>(1.0 - label_[i] / std::exp(score[i]) * weights_[i]);
-        hessians[i] = static_cast<score_t>(label_[i] / std::exp(score[i]) * weights_[i]);
+        GetGrad(gh, i) = static_cast<score_t>(1.0 - label_[i] / std::exp(score[i]) * weights_[i]);
+        GetHess(gh, i) = static_cast<score_t>(label_[i] / std::exp(score[i]) * weights_[i]);
       }
     }
   }
@@ -704,20 +672,19 @@ class RegressionTweedieLoss: public RegressionPoissonLoss {
 
   ~RegressionTweedieLoss() {}
 
-  void GetGradients(const double* score, score_t* gradients,
-                    score_t* hessians) const override {
+  void GetGradients(const double* score, score_t* gh) const override {
     if (weights_ == nullptr) {
       #pragma omp parallel for schedule(static)
       for (data_size_t i = 0; i < num_data_; ++i) {
-        gradients[i] = static_cast<score_t>(-label_[i] * std::exp((1 - rho_) * score[i]) + std::exp((2 - rho_) * score[i]));
-        hessians[i] = static_cast<score_t>(-label_[i] * (1 - rho_) * std::exp((1 - rho_) * score[i]) +
+        GetGrad(gh, i) = static_cast<score_t>(-label_[i] * std::exp((1 - rho_) * score[i]) + std::exp((2 - rho_) * score[i]));
+        GetHess(gh, i) = static_cast<score_t>(-label_[i] * (1 - rho_) * std::exp((1 - rho_) * score[i]) +
           (2 - rho_) * std::exp((2 - rho_) * score[i]));
       }
     } else {
       #pragma omp parallel for schedule(static)
       for (data_size_t i = 0; i < num_data_; ++i) {
-        gradients[i] = static_cast<score_t>((-label_[i] * std::exp((1 - rho_) * score[i]) + std::exp((2 - rho_) * score[i])) * weights_[i]);
-        hessians[i] = static_cast<score_t>((-label_[i] * (1 - rho_) * std::exp((1 - rho_) * score[i]) +
+        GetGrad(gh, i) = static_cast<score_t>((-label_[i] * std::exp((1 - rho_) * score[i]) + std::exp((2 - rho_) * score[i])) * weights_[i]);
+        GetHess(gh, i) = static_cast<score_t>((-label_[i] * (1 - rho_) * std::exp((1 - rho_) * score[i]) +
           (2 - rho_) * std::exp((2 - rho_) * score[i])) * weights_[i]);
       }
     }

@@ -20,14 +20,14 @@ DataParallelTreeLearner<TREELEARNER_T>::~DataParallelTreeLearner() {
 }
 
 template <typename TREELEARNER_T>
-void DataParallelTreeLearner<TREELEARNER_T>::Init(const Dataset* train_data, bool is_constant_hessian) {
+void DataParallelTreeLearner<TREELEARNER_T>::Init(const Dataset* train_data) {
   // initialize SerialTreeLearner
-  TREELEARNER_T::Init(train_data, is_constant_hessian);
+  TREELEARNER_T::Init(train_data);
   // Get local rank and global machine size
   rank_ = Network::rank();
   num_machines_ = Network::num_machines();
   // allocate buffer for communication
-  size_t buffer_size = this->train_data_->NumTotalBin() * sizeof(HistogramBinEntry);
+  size_t buffer_size = this->train_data_->NumTotalBin() * sizeof(double) * 2;
 
   input_buffer_.resize(buffer_size);
   output_buffer_.resize(buffer_size);
@@ -82,7 +82,7 @@ void DataParallelTreeLearner<TREELEARNER_T>::BeforeTrain() {
       if (this->train_data_->FeatureBinMapper(fid)->GetMostFreqBin() == 0) {
         num_bin -= 1;
       }
-      block_len_[i] += num_bin * sizeof(HistogramBinEntry);
+      block_len_[i] += num_bin * sizeof(double) * 2;
     }
     reduce_scatter_size_ += block_len_[i];
   }
@@ -101,7 +101,7 @@ void DataParallelTreeLearner<TREELEARNER_T>::BeforeTrain() {
       if (this->train_data_->FeatureBinMapper(fid)->GetMostFreqBin() == 0) {
         num_bin -= 1;
       }
-      bin_size += num_bin * sizeof(HistogramBinEntry);
+      bin_size += num_bin * sizeof(double) * 2;
     }
   }
 
@@ -113,7 +113,7 @@ void DataParallelTreeLearner<TREELEARNER_T>::BeforeTrain() {
     if (this->train_data_->FeatureBinMapper(fid)->GetMostFreqBin() == 0) {
       num_bin -= 1;
     }
-    bin_size += num_bin * sizeof(HistogramBinEntry);
+    bin_size += num_bin * sizeof(double) * 2;
   }
 
   // sync global data sumup info
@@ -158,8 +158,8 @@ void DataParallelTreeLearner<TREELEARNER_T>::FindBestSplits() {
                 this->smaller_leaf_histogram_array_[feature_index].SizeOfHistgram());
   }
   // Reduce scatter for histogram
-  Network::ReduceScatter(input_buffer_.data(), reduce_scatter_size_, sizeof(HistogramBinEntry), block_start_.data(),
-                         block_len_.data(), output_buffer_.data(), static_cast<comm_size_t>(output_buffer_.size()), &HistogramBinEntry::SumReducer);
+  Network::ReduceScatter(input_buffer_.data(), reduce_scatter_size_, sizeof(double)*2, block_start_.data(),
+                         block_len_.data(), output_buffer_.data(), static_cast<comm_size_t>(output_buffer_.size()), &HistogramSumReducer);
   this->FindBestSplitsFromHistograms(this->is_feature_used_, true);
 }
 

@@ -35,11 +35,9 @@ class ObjectiveFunction {
   * \hessians Output hessians
   */
   virtual void GetGradients(const double* score,
-    score_t* gradients, score_t* hessians) const = 0;
+    score_t* gh) const = 0;
 
   virtual const char* GetName() const = 0;
-
-  virtual bool IsConstantHessian() const { return false; }
 
   virtual bool IsRenewTreeOutput() const { return false; }
 

@@ -49,8 +49,7 @@ class RF : public GBDT {
     // only boosting one time
     Boosting();
     if (is_use_subset_ && bag_data_cnt_ < num_data_) {
-      tmp_grad_.resize(num_data_);
-      tmp_hess_.resize(num_data_);
+      tmp_gh_.resize(num_data_ * 2);
     }
   }
 
@@ -74,8 +73,7 @@ class RF : public GBDT {
     // only boosting one time
     Boosting();
     if (is_use_subset_ && bag_data_cnt_ < num_data_) {
-      tmp_grad_.resize(num_data_);
-      tmp_hess_.resize(num_data_);
+      tmp_gh_.resize(num_data_ * 2);
     }
   }
 
@@ -97,36 +95,30 @@ class RF : public GBDT {
       }
     }
     objective_function_->
-      GetGradients(tmp_scores.data(), gradients_.data(), hessians_.data());
+      GetGradients(tmp_scores.data(), gh_.data());
   }
 
-  bool TrainOneIter(const score_t* gradients, const score_t* hessians) override {
+  bool TrainOneIter(const score_t* gh) override {
     // bagging logic
     Bagging(iter_);
-    CHECK(gradients == nullptr);
-    CHECK(hessians == nullptr);
-
-    gradients = gradients_.data();
-    hessians = hessians_.data();
+    CHECK(gh == nullptr);
+    gh = gh_.data();
     for (int cur_tree_id = 0; cur_tree_id < num_tree_per_iteration_; ++cur_tree_id) {
       std::unique_ptr<Tree> new_tree(new Tree(2));
       size_t offset = static_cast<size_t>(cur_tree_id)* num_data_;
       if (class_need_train_[cur_tree_id]) {
-        auto grad = gradients + offset;
-        auto hess = hessians + offset;
+        auto cur_gh = gh + offset * 2;
 
         // need to copy gradients for bagging subset.
         if (is_use_subset_ && bag_data_cnt_ < num_data_) {
           for (int i = 0; i < bag_data_cnt_; ++i) {
-            tmp_grad_[i] = grad[bag_data_indices_[i]];
-            tmp_hess_[i] = hess[bag_data_indices_[i]];
+            GetGrad(tmp_gh_, i) = GetGrad(cur_gh, bag_data_indices_[i]);
+            GetHess(tmp_gh_, i) = GetHess(cur_gh, bag_data_indices_[i]);
           }
-          grad = tmp_grad_.data();
-          hess = tmp_hess_.data();
+          cur_gh = tmp_gh_.data();
         }
 
-        new_tree.reset(tree_learner_->Train(grad, hess, is_constant_hessian_,
-          forced_splits_json_));
+        new_tree.reset(tree_learner_->Train(cur_gh, forced_splits_json_));
       }
 
       if (new_tree->num_leaves() > 1) {
@@ -209,8 +201,7 @@ class RF : public GBDT {
   };
 
  private:
-  std::vector<score_t> tmp_grad_;
-  std::vector<score_t> tmp_hess_;
+  std::vector<score_t> tmp_gh_;
   std::vector<double> init_scores_;
 };
 

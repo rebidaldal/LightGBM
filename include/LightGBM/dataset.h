@@ -400,13 +400,13 @@ class Dataset {
 
   LIGHTGBM_EXPORT bool SetDoubleField(const char* field_name, const double* field_data, data_size_t num_element);
 
-  LIGHTGBM_EXPORT bool SetIntField(const char* field_name, const int* field_data, data_size_t num_element);
+  LIGHTGBM_EXPORT bool SetIntField(const char* field_name, const data_size_t* field_data, data_size_t num_element);
 
   LIGHTGBM_EXPORT bool GetFloatField(const char* field_name, data_size_t* out_len, const float** out_ptr);
 
   LIGHTGBM_EXPORT bool GetDoubleField(const char* field_name, data_size_t* out_len, const double** out_ptr);
 
-  LIGHTGBM_EXPORT bool GetIntField(const char* field_name, data_size_t* out_len, const int** out_ptr);
+  LIGHTGBM_EXPORT bool GetIntField(const char* field_name, data_size_t* out_len, const data_size_t** out_ptr);
 
   LIGHTGBM_EXPORT bool GetInt8Field(const char* field_name, data_size_t* out_len, const int8_t** out_ptr);
 
@@ -425,13 +425,12 @@ class Dataset {
                            const data_size_t* data_indices, data_size_t num_data,
                            int leaf_idx,
                            std::vector<std::unique_ptr<OrderedBin>>* ordered_bins,
-                           const score_t* gradients, const score_t* hessians,
-                           score_t* ordered_gradients, score_t* ordered_hessians,
-                           bool is_constant_hessian,
-                           HistogramBinEntry* histogram_data) const;
+                           const score_t* gh,
+                           score_t* ordered_gh,
+                           double* histogram_data) const;
 
   void FixHistogram(int feature_idx, double sum_gradient, double sum_hessian, data_size_t num_data,
-                    HistogramBinEntry* data) const;
+                    double* data) const;
 
   inline data_size_t Split(int feature,
                            const uint32_t* threshold, int num_threshold,  bool default_left,

@@ -19,8 +19,8 @@ VotingParallelTreeLearner<TREELEARNER_T>::VotingParallelTreeLearner(const Config
 }
 
 template <typename TREELEARNER_T>
-void VotingParallelTreeLearner<TREELEARNER_T>::Init(const Dataset* train_data, bool is_constant_hessian) {
-  TREELEARNER_T::Init(train_data, is_constant_hessian);
+void VotingParallelTreeLearner<TREELEARNER_T>::Init(const Dataset* train_data) {
+  TREELEARNER_T::Init(train_data);
   rank_ = Network::rank();
   num_machines_ = Network::num_machines();
 
@@ -36,7 +36,7 @@ void VotingParallelTreeLearner<TREELEARNER_T>::Init(const Dataset* train_data, b
     }
   }
   // calculate buffer size
-  size_t buffer_size = 2 * top_k_ * std::max(max_bin * sizeof(HistogramBinEntry), sizeof(LightSplitInfo) * num_machines_);
+  size_t buffer_size = 2 * top_k_ * std::max(max_bin * sizeof(double) * 2, sizeof(LightSplitInfo) * num_machines_);
   // left and right on same time, so need double size
   input_buffer_.resize(buffer_size);
   output_buffer_.resize(buffer_size);
@@ -153,12 +153,12 @@ bool VotingParallelTreeLearner<TREELEARNER_T>::BeforeFindBestSplit(const Tree* t
       return true;
     } else if (num_data_in_left_child < num_data_in_right_child) {
       // get local sumup
-      this->smaller_leaf_splits_->Init(left_leaf, this->data_partition_.get(), this->gradients_, this->hessians_);
-      this->larger_leaf_splits_->Init(right_leaf, this->data_partition_.get(), this->gradients_, this->hessians_);
+      this->smaller_leaf_splits_->Init(left_leaf, this->data_partition_.get(), this->gh_);
+      this->larger_leaf_splits_->Init(right_leaf, this->data_partition_.get(), this->gh_);
     } else {
       // get local sumup
-      this->smaller_leaf_splits_->Init(right_leaf, this->data_partition_.get(), this->gradients_, this->hessians_);
-      this->larger_leaf_splits_->Init(left_leaf, this->data_partition_.get(), this->gradients_, this->hessians_);
+      this->smaller_leaf_splits_->Init(right_leaf, this->data_partition_.get(), this->gh_);
+      this->larger_leaf_splits_->Init(left_leaf, this->data_partition_.get(), this->gh_);
     }
     return true;
   } else {
@@ -367,8 +367,8 @@ void VotingParallelTreeLearner<TREELEARNER_T>::FindBestSplits() {
   CopyLocalHistogram(smaller_top_features, larger_top_features);
 
   // Reduce scatter for histogram
-  Network::ReduceScatter(input_buffer_.data(), reduce_scatter_size_, sizeof(HistogramBinEntry), block_start_.data(), block_len_.data(),
-                         output_buffer_.data(), static_cast<comm_size_t>(output_buffer_.size()), &HistogramBinEntry::SumReducer);
+  Network::ReduceScatter(input_buffer_.data(), reduce_scatter_size_, sizeof(double) * 2, block_start_.data(), block_len_.data(),
+                         output_buffer_.data(), static_cast<comm_size_t>(output_buffer_.size()), &HistogramSumReducer);
 
   this->FindBestSplitsFromHistograms(is_feature_used, false);
 }

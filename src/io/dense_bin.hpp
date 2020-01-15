@@ -69,61 +69,31 @@ class DenseBin: public Bin {
   BinIterator* GetIterator(uint32_t min_bin, uint32_t max_bin, uint32_t most_freq_bin) const override;
 
   void ConstructHistogram(const data_size_t* data_indices, data_size_t start, data_size_t end,
-    const score_t* ordered_gradients, const score_t* ordered_hessians,
-    HistogramBinEntry* out) const override {
+    const score_t* ordered_gh,
+    double* out) const override {
 
     const data_size_t prefetch_size = 32 / sizeof(VAL_T);
     for (data_size_t i = start; i < end; i++) {
       if (i + prefetch_size < end) {
         PREFETCH_T0(data_.data() + data_indices[i + prefetch_size]);
       }
-      const VAL_T bin = data_[data_indices[i]];
-      out[bin].sum_gradients += ordered_gradients[i];
-      out[bin].sum_hessians += ordered_hessians[i];
-      ++out[bin].cnt;
+      const int bin = data_[data_indices[i]];
+      out[bin * 2] += ordered_gh[i * 2];
+      out[bin * 2 + 1] += ordered_gh[i * 2 + 1];
     }
   }
 
   void ConstructHistogram(data_size_t start, data_size_t end,
-    const score_t* ordered_gradients, const score_t* ordered_hessians,
-    HistogramBinEntry* out) const override {
+    const score_t* ordered_gh,
+    double* out) const override {
     const data_size_t prefetch_size = 32 / sizeof(VAL_T);
     for (data_size_t i = start; i < end; ++i) {
       if (i + prefetch_size < end) {
         PREFETCH_T0(data_.data() + i + prefetch_size);
       }
-      const VAL_T bin = data_[i];
-      out[bin].sum_gradients += ordered_gradients[i];
-      out[bin].sum_hessians += ordered_hessians[i];
-      ++out[bin].cnt;
-    }
-  }
-
-  void ConstructHistogram(const data_size_t* data_indices, data_size_t start, data_size_t end,
-    const score_t* ordered_gradients,
-    HistogramBinEntry* out) const override {
-    const data_size_t prefetch_size = 32 / sizeof(VAL_T);
-    for (data_size_t i = start; i < end; ++i) {
-      if (i + prefetch_size < end) {
-        PREFETCH_T0(data_.data() + data_indices[i + prefetch_size]);
-      }
-      const VAL_T bin = data_[data_indices[i]];
-      out[bin].sum_gradients += ordered_gradients[i];
-      ++out[bin].cnt;
-    }
-  }
-
-  void ConstructHistogram(data_size_t start, data_size_t end,
-    const score_t* ordered_gradients,
-    HistogramBinEntry* out) const override {
-    const data_size_t prefetch_size = 32 / sizeof(VAL_T);
-    for (data_size_t i = start; i < end; ++i) {
-      if (i + prefetch_size < end) {
-        PREFETCH_T0(data_.data() + i + prefetch_size);
-      }
-      const VAL_T bin = data_[i];
-      out[bin].sum_gradients += ordered_gradients[i];
-      ++out[bin].cnt;
+      const int bin = data_[i];
+      out[bin * 2] += ordered_gh[i * 2];
+      out[bin * 2 + 1] += ordered_gh[i * 2 + 1];
     }
   }
 

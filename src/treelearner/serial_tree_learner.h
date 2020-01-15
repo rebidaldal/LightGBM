@@ -44,19 +44,18 @@ class SerialTreeLearner: public TreeLearner {
 
   ~SerialTreeLearner();
 
-  void Init(const Dataset* train_data, bool is_constant_hessian) override;
+  void Init(const Dataset* train_data) override;
 
   void ResetTrainingData(const Dataset* train_data) override;
 
   void ResetConfig(const Config* config) override;
 
-  Tree* Train(const score_t* gradients, const score_t *hessians, bool is_constant_hessian,
-              const Json& forced_split_json) override;
+  Tree* Train(const score_t* gh, const Json& forced_split_json) override;
 
-  Tree* FitByExistingTree(const Tree* old_tree, const score_t* gradients, const score_t* hessians) const override;
+  Tree* FitByExistingTree(const Tree* old_tree, const score_t* gh) const override;
 
   Tree* FitByExistingTree(const Tree* old_tree, const std::vector<int>& leaf_pred,
-                          const score_t* gradients, const score_t* hessians) override;
+                          const score_t* gh) override;
 
   void SetBaggingData(const data_size_t* used_indices, data_size_t num_data) override {
     data_partition_->SetUsedDataIndices(used_indices, num_data);
@@ -125,9 +124,7 @@ class SerialTreeLearner: public TreeLearner {
   /*! \brief training data */
   const Dataset* train_data_;
   /*! \brief gradients of current iteration */
-  const score_t* gradients_;
-  /*! \brief hessians of current iteration */
-  const score_t* hessians_;
+  const score_t* gh_;
   /*! \brief training data partition on leaves */
   std::unique_ptr<DataPartition> data_partition_;
   /*! \brief used for generate used features */
@@ -161,9 +158,7 @@ class SerialTreeLearner: public TreeLearner {
   std::vector<score_t, boost::alignment::aligned_allocator<score_t, 4096>> ordered_hessians_;
 #else
   /*! \brief gradients of current iteration, ordered for cache optimized */
-  std::vector<score_t> ordered_gradients_;
-  /*! \brief hessians of current iteration, ordered for cache optimized */
-  std::vector<score_t> ordered_hessians_;
+  std::vector<score_t> ordered_gh_;
 #endif
 
   /*! \brief Store ordered bin */
@@ -178,7 +173,6 @@ class SerialTreeLearner: public TreeLearner {
   const Config* config_;
   int num_threads_;
   std::vector<int> ordered_bin_indices_;
-  bool is_constant_hessian_;
   std::unique_ptr<CostEfficientGradientBoosting> cegb_;
 };
 
