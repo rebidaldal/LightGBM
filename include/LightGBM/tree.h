@@ -212,7 +212,7 @@ public:
   }
 
   inline int NextLeafId() const {
-    return num_leaves_ - 1;
+    return num_leaves_;
   }
 
   void RecomputeMaxDepth();
