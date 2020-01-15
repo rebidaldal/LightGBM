@@ -775,9 +775,6 @@ void SerialTreeLearner::Split(Tree* tree, int best_leaf, int* left_leaf, int* ri
     auto threshold_double = train_data_->RealThreshold(inner_feature_index, best_split_info.threshold);
     data_partition_->Split(best_leaf, train_data_, inner_feature_index,
       &best_split_info.threshold, 1, best_split_info.default_left, next_leaf_id);
-    if (best_split_info.left_count != data_partition_->leaf_count(*left_leaf)) {
-      Log::Info("delta %d", data_partition_->leaf_count(*left_leaf) - best_split_info.left_count);
-    }
     best_split_info.left_count = data_partition_->leaf_count(*left_leaf);
     best_split_info.right_count = data_partition_->leaf_count(next_leaf_id);
     // split tree, will return right leaf
