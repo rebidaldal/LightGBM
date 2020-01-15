@@ -191,7 +191,7 @@ std::vector<std::vector<int>> FindGroups(const std::vector<std::unique_ptr<BinMa
   std::vector<int> group_num_bin2;
   std::vector<bool> forced_single_val_group;
 
-  const double dense_threshold = 0.4;
+  const double dense_threshold = 0.6;
   for (int gid = 0; gid < static_cast<int>(features_in_group.size()); ++gid) {
     const double dense_rate = static_cast<double>(group_used_row_cnt[gid]) / total_sample_cnt;
     if (dense_rate >= dense_threshold) {
@@ -1133,9 +1133,11 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
       sparse_hist_prep_time += std::chrono::steady_clock::now() - start_time;
       start_time = std::chrono::steady_clock::now();
       #endif
-      data_size_t step = (num_data + num_threads - 1) / num_threads;
+      const int min_row_size = 512;
+      const int n_part = std::min(num_threads, (num_data + min_row_size - 1) / min_row_size);
+      const int step = (num_data + n_part - 1) / n_part;
       #pragma omp parallel for schedule(static)
-      for (int tid = 0; tid < num_threads; ++tid) {
+      for (int tid = 0; tid < n_part; ++tid) {
         data_size_t start = tid * step;
         data_size_t end = std::min(start + step, num_data);
         auto data_ptr = hist_buf_.data() + tid * num_bin;
@@ -1183,20 +1185,19 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
 
       // don't merge bin 0
       const int min_block_size = 512;
-      const int n_block = std::min(num_threads, (num_bin + min_block_size - 1) / min_block_size);
+      const int n_block = std::min(num_threads, (num_bin + min_block_size - 2) / min_block_size);
       const int num_bin_per_threads = (num_bin + n_block - 2) / n_block;
       if (!is_constant_hessian) {
         #pragma omp parallel for schedule(static)
         for (int t = 0; t < n_block; ++t) {
           const int start = t * num_bin_per_threads + 1;
           const int end = std::min(start + num_bin_per_threads, num_bin);
-          for (int tid = 0; tid < num_threads; ++tid) {
+          for (int tid = 0; tid < n_part; ++tid) {
             auto src_ptr = hist_buf_.data() + tid * num_bin;
             for (int i = start; i < end; i++) {
               data_ptr[i].sum_gradients += src_ptr[i].sum_gradients;
               data_ptr[i].sum_hessians += src_ptr[i].sum_hessians;
               data_ptr[i].cnt += src_ptr[i].cnt;
-              PREFETCH_T0(src_ptr + i + 4);
             }
           }
         }
@@ -1205,12 +1206,11 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
         for (int t = 0; t < n_block; ++t) {
           const int start = t * num_bin_per_threads + 1;
           const int end = std::min(start + num_bin_per_threads, num_bin);
-          for (int tid = 0; tid < num_threads; ++tid) {
+          for (int tid = 0; tid < n_part; ++tid) {
             auto src_ptr = hist_buf_.data() + tid * num_bin;
             for (int i = start; i < end; i++) {
               data_ptr[i].sum_gradients += src_ptr[i].sum_gradients;
               data_ptr[i].cnt += src_ptr[i].cnt;
-              PREFETCH_T0(src_ptr + i + 4);
             }
           }
           for (int i = start; i < end; i++) {
