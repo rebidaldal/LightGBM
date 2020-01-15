@@ -71,12 +71,16 @@ class DenseBin: public Bin {
   void ConstructHistogram(const data_size_t* data_indices, data_size_t start, data_size_t end,
     const score_t* ordered_gh,
     double* out) const override {
-
-    const data_size_t prefetch_size = 32 / sizeof(VAL_T);
-    for (data_size_t i = start; i < end; i++) {
-      if (i + prefetch_size < end) {
-        PREFETCH_T0(data_.data() + data_indices[i + prefetch_size]);
-      }
+    const data_size_t pf_offset = 64 / sizeof(VAL_T);
+    const data_size_t pf_end = end - pf_offset - kCacheLineSize / sizeof(VAL_T);
+    data_size_t i = start;
+    for (; i < pf_end; i++) {
+      PREFETCH_T0(data_.data() + data_indices[i + pf_offset]);
+      const int bin = data_[data_indices[i]];
+      out[bin * 2] += ordered_gh[i * 2];
+      out[bin * 2 + 1] += ordered_gh[i * 2 + 1];
+    }
+    for (; i < end; i++) {
       const int bin = data_[data_indices[i]];
       out[bin * 2] += ordered_gh[i * 2];
       out[bin * 2 + 1] += ordered_gh[i * 2 + 1];
@@ -86,11 +90,16 @@ class DenseBin: public Bin {
   void ConstructHistogram(data_size_t start, data_size_t end,
     const score_t* ordered_gh,
     double* out) const override {
-    const data_size_t prefetch_size = 32 / sizeof(VAL_T);
-    for (data_size_t i = start; i < end; ++i) {
-      if (i + prefetch_size < end) {
-        PREFETCH_T0(data_.data() + i + prefetch_size);
-      }
+    const data_size_t pf_offset = 64 / sizeof(VAL_T);
+    const data_size_t pf_end = end - pf_offset - kCacheLineSize / sizeof(VAL_T);
+    data_size_t i = start;
+    for (; i < pf_end; i++) {
+      PREFETCH_T0(data_.data() + i + pf_offset);
+      const int bin = data_[i];
+      out[bin * 2] += ordered_gh[i * 2];
+      out[bin * 2 + 1] += ordered_gh[i * 2 + 1];
+    }
+    for (; i < end; i++) {
       const int bin = data_[i];
       out[bin * 2] += ordered_gh[i * 2];
       out[bin * 2 + 1] += ordered_gh[i * 2 + 1];

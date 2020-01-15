@@ -84,15 +84,10 @@ class OrderedSparseBin: public OrderedBin {
 
   void ConstructHistogram(int leaf, const score_t* gh,
                           double* out) const override {
-    const data_size_t prefetch_size = 4;
     // get current leaf boundary
     const data_size_t start = leaf_start_[leaf];
     const data_size_t end = start + leaf_cnt_[leaf];
     for (data_size_t i = start; i < end; ++i) {
-      if (i + prefetch_size < end) {
-        PREFETCH_T0(ordered_pair_.data() + i + prefetch_size);
-        PREFETCH_T0(gh + ordered_pair_[i + prefetch_size].ridx * 2);
-      }
       const int bin = ordered_pair_[i].bin;
       out[bin * 2] += gh[ordered_pair_[i].ridx * 2];
       out[bin * 2 + 1] += gh[ordered_pair_[i].ridx * 2 + 1];
