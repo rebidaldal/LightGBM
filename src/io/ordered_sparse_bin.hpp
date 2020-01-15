@@ -88,9 +88,10 @@ class OrderedSparseBin: public OrderedBin {
     const data_size_t start = leaf_start_[leaf];
     const data_size_t end = start + leaf_cnt_[leaf];
     for (data_size_t i = start; i < end; ++i) {
-      const int bin = ordered_pair_[i].bin;
-      out[bin * 2] += gh[ordered_pair_[i].ridx * 2];
-      out[bin * 2 + 1] += gh[ordered_pair_[i].ridx * 2 + 1];
+      const int bin = static_cast<int>(ordered_pair_[i].bin) << 1;
+      const int ridx = ordered_pair_[i].ridx << 1;
+      out[bin] += gh[ridx];
+      out[bin + 1] += gh[ridx + 1];
     }
   }
 

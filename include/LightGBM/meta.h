@@ -72,9 +72,9 @@ typedef void(*AllgatherFunction)(char* input, comm_size_t input_size, const comm
 
 #define NO_SPECIFIC (-1)
 
-#define GetGrad(gh, i) (gh[ (i) * 2])
+#define GetGrad(gh, i) (gh[(i) << 1])
 
-#define GetHess(gh, i) (gh[ (i) * 2 + 1])
+#define GetHess(gh, i) (gh[((i) << 1) + 1])
 
 // Prefetch size is usually 64 bytes
 const int kCacheLineSize = 64;

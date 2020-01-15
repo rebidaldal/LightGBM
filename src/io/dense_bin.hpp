@@ -68,6 +68,13 @@ class DenseBin: public Bin {
 
   BinIterator* GetIterator(uint32_t min_bin, uint32_t max_bin, uint32_t most_freq_bin) const override;
 
+
+  #define ACC_GH(dest, di, src, si) \
+  const auto tdi = static_cast<int>(di) << 1; \
+  const auto tsi = static_cast<data_size_t>(si) << 1; \
+  dest[tdi] += src[tsi]; \
+  dest[tdi + 1] += src[tsi + 1]; \
+
   void ConstructHistogram(const data_size_t* data_indices, data_size_t start, data_size_t end,
     const score_t* ordered_gh,
     double* out) const override {
@@ -76,14 +83,12 @@ class DenseBin: public Bin {
     data_size_t i = start;
     for (; i < pf_end; i++) {
       PREFETCH_T0(data_.data() + data_indices[i + pf_offset]);
-      const int bin = data_[data_indices[i]];
-      out[bin * 2] += ordered_gh[i * 2];
-      out[bin * 2 + 1] += ordered_gh[i * 2 + 1];
+      const auto bin = data_[data_indices[i]];
+      ACC_GH(out, bin, ordered_gh, i);
     }
     for (; i < end; i++) {
-      const int bin = data_[data_indices[i]];
-      out[bin * 2] += ordered_gh[i * 2];
-      out[bin * 2 + 1] += ordered_gh[i * 2 + 1];
+      const auto bin = data_[data_indices[i]];
+      ACC_GH(out, bin, ordered_gh, i);
     }
   }
 
@@ -95,16 +100,15 @@ class DenseBin: public Bin {
     data_size_t i = start;
     for (; i < pf_end; i++) {
       PREFETCH_T0(data_.data() + i + pf_offset);
-      const int bin = data_[i];
-      out[bin * 2] += ordered_gh[i * 2];
-      out[bin * 2 + 1] += ordered_gh[i * 2 + 1];
+      const auto bin = data_[i];
+      ACC_GH(out, bin, ordered_gh, i);
     }
     for (; i < end; i++) {
-      const int bin = data_[i];
-      out[bin * 2] += ordered_gh[i * 2];
-      out[bin * 2 + 1] += ordered_gh[i * 2 + 1];
+      const auto bin = data_[i];
+      ACC_GH(out, bin, ordered_gh, i);
     }
   }
+  #undef ACC_GH
 
   data_size_t Split(
     uint32_t min_bin, uint32_t max_bin, uint32_t default_bin, uint32_t most_freq_bin, MissingType missing_type, bool default_left,
