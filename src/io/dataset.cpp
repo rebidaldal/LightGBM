@@ -873,7 +873,7 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
                                   const score_t* gradients, const score_t* hessians,
                                   score_t* ordered_gradients, score_t* ordered_hessians,
                                   bool is_constant_hessian,
-                                  HistogramBinEntry* hist_data) const {
+                                  hist_t* hist_data) const {
   if (leaf_idx < 0 || num_data < 0 || hist_data == nullptr) {
     return;
   }
@@ -922,7 +922,7 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
         // feature is not used
         auto data_ptr = hist_data + group_bin_boundaries_[group];
         const int num_bin = feature_groups_[group]->num_total_bin_;
-        std::memset(reinterpret_cast<void*>(data_ptr + 1), 0, (num_bin - 1) * sizeof(HistogramBinEntry));
+        std::memset(reinterpret_cast<void*>(data_ptr + KHistOffset), 0, (num_bin - 1) * KHistEntrySize);
         // construct histograms for smaller leaf
         if (ref_ordered_bins[group] == nullptr) {
           // if not use ordered bin
@@ -952,7 +952,7 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
         // feature is not used
         auto data_ptr = hist_data + group_bin_boundaries_[group];
         const int num_bin = feature_groups_[group]->num_total_bin_;
-        std::memset(reinterpret_cast<void*>(data_ptr + 1), 0, (num_bin - 1) * sizeof(HistogramBinEntry));
+        std::memset(reinterpret_cast<void*>(data_ptr + KHistOffset), 0, (num_bin - 1)* KHistEntrySize);
         // construct histograms for smaller leaf
         if (ref_ordered_bins[group] == nullptr) {
           // if not use ordered bin
@@ -970,7 +970,7 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
         }
         // fixed hessian.
         for (int i = 0; i < num_bin; ++i) {
-          data_ptr[i].sum_hessians = data_ptr[i].cnt * hessians[0];
+          GET_HESS(data_ptr, i) = GET_HESS(data_ptr, i) * hessians[0];
         }
         OMP_LOOP_EX_END();
       }
@@ -986,7 +986,7 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
         // feature is not used
         auto data_ptr = hist_data + group_bin_boundaries_[group];
         const int num_bin = feature_groups_[group]->num_total_bin_;
-        std::memset(reinterpret_cast<void*>(data_ptr + 1), 0, (num_bin - 1) * sizeof(HistogramBinEntry));
+        std::memset(reinterpret_cast<void*>(data_ptr + KHistOffset), 0, (num_bin - 1)* KHistEntrySize);
         // construct histograms for smaller leaf
         if (ref_ordered_bins[group] == nullptr) {
           // if not use ordered bin
@@ -1015,7 +1015,7 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
         // feature is not used
         auto data_ptr = hist_data + group_bin_boundaries_[group];
         const int num_bin = feature_groups_[group]->num_total_bin_;
-        std::memset(reinterpret_cast<void*>(data_ptr + 1), 0, (num_bin - 1) * sizeof(HistogramBinEntry));
+        std::memset(reinterpret_cast<void*>(data_ptr + KHistOffset), 0, (num_bin - 1)* KHistEntrySize);
         // construct histograms for smaller leaf
         if (ref_ordered_bins[group] == nullptr) {
           // if not use ordered bin
@@ -1032,7 +1032,7 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
         }
         // fixed hessian.
         for (int i = 0; i < num_bin; ++i) {
-          data_ptr[i].sum_hessians = data_ptr[i].cnt * hessians[0];
+          GET_HESS(data_ptr, i) = GET_HESS(data_ptr, i) * hessians[0];
         }
         OMP_LOOP_EX_END();
       }
@@ -1042,21 +1042,19 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
 }
 
 void Dataset::FixHistogram(int feature_idx, double sum_gradient, double sum_hessian, data_size_t num_data,
-                           HistogramBinEntry* data) const {
+                           hist_t* data) const {
   const int group = feature2group_[feature_idx];
   const int sub_feature = feature2subfeature_[feature_idx];
   const BinMapper* bin_mapper = feature_groups_[group]->bin_mappers_[sub_feature].get();
   const int most_freq_bin = bin_mapper->GetMostFreqBin();
   if (most_freq_bin > 0) {
     const int num_bin = bin_mapper->num_bin();
-    data[most_freq_bin].sum_gradients = sum_gradient;
-    data[most_freq_bin].sum_hessians = sum_hessian;
-    data[most_freq_bin].cnt = num_data;
+    GET_GRAD(data, most_freq_bin) = sum_gradient;
+    GET_HESS(data, most_freq_bin) = sum_hessian;
     for (int i = 0; i < num_bin; ++i) {
       if (i != most_freq_bin) {
-        data[most_freq_bin].sum_gradients -= data[i].sum_gradients;
-        data[most_freq_bin].sum_hessians -= data[i].sum_hessians;
-        data[most_freq_bin].cnt -= data[i].cnt;
+        GET_GRAD(data, most_freq_bin) -= GET_GRAD(data, i);
+        GET_HESS(data, most_freq_bin) -= GET_HESS(data, i);
       }
     }
   }

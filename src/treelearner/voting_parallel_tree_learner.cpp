@@ -36,7 +36,7 @@ void VotingParallelTreeLearner<TREELEARNER_T>::Init(const Dataset* train_data, b
     }
   }
   // calculate buffer size
-  size_t buffer_size = 2 * top_k_ * std::max(max_bin * sizeof(HistogramBinEntry), sizeof(LightSplitInfo) * num_machines_);
+  size_t buffer_size = 2 * top_k_ * std::max(max_bin * KHistEntrySize, sizeof(LightSplitInfo) * num_machines_);
   // left and right on same time, so need double size
   input_buffer_.resize(buffer_size);
   output_buffer_.resize(buffer_size);
@@ -367,8 +367,8 @@ void VotingParallelTreeLearner<TREELEARNER_T>::FindBestSplits() {
   CopyLocalHistogram(smaller_top_features, larger_top_features);
 
   // Reduce scatter for histogram
-  Network::ReduceScatter(input_buffer_.data(), reduce_scatter_size_, sizeof(HistogramBinEntry), block_start_.data(), block_len_.data(),
-                         output_buffer_.data(), static_cast<comm_size_t>(output_buffer_.size()), &HistogramBinEntry::SumReducer);
+  Network::ReduceScatter(input_buffer_.data(), reduce_scatter_size_, sizeof(hist_t), block_start_.data(), block_len_.data(),
+                         output_buffer_.data(), static_cast<comm_size_t>(output_buffer_.size()), &HistogramSumReducer);
 
   this->FindBestSplitsFromHistograms(is_feature_used, false);
 }

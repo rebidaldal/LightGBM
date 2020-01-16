@@ -103,25 +103,25 @@ class SparseBin: public Bin {
   BinIterator* GetIterator(uint32_t min_bin, uint32_t max_bin, uint32_t most_freq_bin) const override;
 
   void ConstructHistogram(const data_size_t*, data_size_t, data_size_t, const score_t*,
-    const score_t*, HistogramBinEntry*) const override {
+    const score_t*, hist_t*) const override {
     // Will use OrderedSparseBin->ConstructHistogram() instead
     Log::Fatal("Using OrderedSparseBin->ConstructHistogram() instead");
   }
 
   void ConstructHistogram(data_size_t, data_size_t, const score_t*,
-                          const score_t*, HistogramBinEntry*) const override {
+                          const score_t*, hist_t*) const override {
     // Will use OrderedSparseBin->ConstructHistogram() instead
     Log::Fatal("Using OrderedSparseBin->ConstructHistogram() instead");
   }
 
   void ConstructHistogram(const data_size_t*, data_size_t, data_size_t, const score_t*,
-                          HistogramBinEntry*) const override {
+    hist_t*) const override {
     // Will use OrderedSparseBin->ConstructHistogram() instead
     Log::Fatal("Using OrderedSparseBin->ConstructHistogram() instead");
   }
 
   void ConstructHistogram(data_size_t, data_size_t, const score_t*,
-                          HistogramBinEntry*) const override {
+    hist_t*) const override {
     // Will use OrderedSparseBin->ConstructHistogram() instead
     Log::Fatal("Using OrderedSparseBin->ConstructHistogram() instead");
   }

@@ -83,31 +83,29 @@ class OrderedSparseBin: public OrderedBin {
   }
 
   void ConstructHistogram(int leaf, const score_t* gradient, const score_t* hessian,
-                          HistogramBinEntry* out) const override {
+                          hist_t* out) const override {
     // get current leaf boundary
     const data_size_t start = leaf_start_[leaf];
     const data_size_t end = start + leaf_cnt_[leaf];
     for (data_size_t i = start; i < end; ++i) {
-      const VAL_T bin = ordered_pair_[i].bin;
+      const int bin = static_cast<int>(ordered_pair_[i].bin) << 1;
       const auto g = gradient[ordered_pair_[i].ridx];
       const auto h = hessian[ordered_pair_[i].ridx];
-
-      out[bin].sum_gradients += g;
-      out[bin].sum_hessians += h;
-      ++out[bin].cnt;
+      out[bin] += g;
+      out[bin + 1] += h;
     }
   }
 
   void ConstructHistogram(int leaf, const score_t* gradient,
-                          HistogramBinEntry* out) const override {
+                          hist_t* out) const override {
     // get current leaf boundary
     const data_size_t start = leaf_start_[leaf];
     const data_size_t end = start + leaf_cnt_[leaf];
     for (data_size_t i = start; i < end; ++i) {
-      const VAL_T bin = ordered_pair_[i].bin;
+      const int bin = static_cast<int>(ordered_pair_[i].bin) << 1;
       const auto g = gradient[ordered_pair_[i].ridx];
-      out[bin].sum_gradients += g;
-      ++out[bin].cnt;
+      out[bin] += g;
+      out[bin + 1] += 1;
     }
   }
 

@@ -60,7 +60,7 @@ void SerialTreeLearner::Init(const Dataset* train_data, bool is_constant_hessian
   } else {
     size_t total_histogram_size = 0;
     for (int i = 0; i < train_data_->num_features(); ++i) {
-      total_histogram_size += sizeof(HistogramBinEntry) * train_data_->FeatureNumBin(i);
+      total_histogram_size += KHistEntrySize * train_data_->FeatureNumBin(i);
     }
     max_cache_size = static_cast<int>(config_->histogram_pool_size * 1024 * 1024 / total_histogram_size);
   }
@@ -148,7 +148,7 @@ void SerialTreeLearner::ResetConfig(const Config* config) {
     } else {
       size_t total_histogram_size = 0;
       for (int i = 0; i < train_data_->num_features(); ++i) {
-        total_histogram_size += sizeof(HistogramBinEntry) * train_data_->FeatureNumBin(i);
+        total_histogram_size += KHistEntrySize * train_data_->FeatureNumBin(i);
       }
       max_cache_size = static_cast<int>(config_->histogram_pool_size * 1024 * 1024 / total_histogram_size);
     }
@@ -498,7 +498,7 @@ void SerialTreeLearner::ConstructHistograms(const std::vector<int8_t>& is_featur
   auto start_time = std::chrono::steady_clock::now();
   #endif
   // construct smaller leaf
-  HistogramBinEntry* ptr_smaller_leaf_hist_data = smaller_leaf_histogram_array_[0].RawData() - 1;
+  hist_t* ptr_smaller_leaf_hist_data = smaller_leaf_histogram_array_[0].RawData() - KHistOffset;
   train_data_->ConstructHistograms(is_feature_used,
                                    smaller_leaf_splits_->data_indices(), smaller_leaf_splits_->num_data_in_leaf(),
                                    smaller_leaf_splits_->LeafIndex(),
@@ -508,7 +508,7 @@ void SerialTreeLearner::ConstructHistograms(const std::vector<int8_t>& is_featur
 
   if (larger_leaf_histogram_array_ != nullptr && !use_subtract) {
     // construct larger leaf
-    HistogramBinEntry* ptr_larger_leaf_hist_data = larger_leaf_histogram_array_[0].RawData() - 1;
+    hist_t* ptr_larger_leaf_hist_data = larger_leaf_histogram_array_[0].RawData() - KHistOffset;
     train_data_->ConstructHistograms(is_feature_used,
                                      larger_leaf_splits_->data_indices(), larger_leaf_splits_->num_data_in_leaf(),
                                      larger_leaf_splits_->LeafIndex(),

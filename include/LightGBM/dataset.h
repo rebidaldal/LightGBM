@@ -428,10 +428,10 @@ class Dataset {
                            const score_t* gradients, const score_t* hessians,
                            score_t* ordered_gradients, score_t* ordered_hessians,
                            bool is_constant_hessian,
-                           HistogramBinEntry* histogram_data) const;
+                           hist_t* histogram_data) const;
 
   void FixHistogram(int feature_idx, double sum_gradient, double sum_hessian, data_size_t num_data,
-                    HistogramBinEntry* data) const;
+                    hist_t* data) const;
 
   inline data_size_t Split(int feature,
                            const uint32_t* threshold, int num_threshold,  bool default_left,
