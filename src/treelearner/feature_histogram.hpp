@@ -736,7 +736,7 @@ public:
       }
       Log::Info("Total Bins %d", bin_cnt_over_features);
     }
-    uint64_t num_total_bin = train_data->NumTotalBin();
+    uint64_t num_total_bin = train_data->NumTotalBinAligned();
     int old_cache_size = static_cast<int>(pool_.size());
     Reset(cache_size, total_size);
 
@@ -752,7 +752,12 @@ public:
       pool_[i].reset(new FeatureHistogram[train_data->num_features()]);
       data_[i].resize(num_total_bin * 2);
       uint64_t offset = 0;
+      int last_gid = -1;
       for (int j = 0; j < train_data->num_features(); ++j) {
+        if (train_data->Feature2Group(j) != last_gid) {
+          last_gid = train_data->Feature2Group(j);
+          offset = train_data->GroupBinBoundaryAlign(last_gid);
+        }
         offset += static_cast<uint64_t>(train_data->SubFeatureBinOffset(j));
         pool_[i][j].Init(data_[i].data() + offset * 2, &feature_metas_[j]);
         auto num_bin = train_data->FeatureNumBin(j);
@@ -834,7 +839,7 @@ public:
 
 private:
   std::vector<std::unique_ptr<FeatureHistogram[]>> pool_;
-  std::vector<std::vector<hist_t>> data_;
+  std::vector<std::vector<hist_t, AlignmentAllocator<hist_t, 32>>> data_;
   std::vector<FeatureMetainfo> feature_metas_;
   int cache_size_;
   int total_size_;

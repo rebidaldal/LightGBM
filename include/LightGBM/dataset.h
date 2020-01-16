@@ -8,6 +8,7 @@
 #include <LightGBM/config.h>
 #include <LightGBM/feature_group.h>
 #include <LightGBM/meta.h>
+#include <LightGBM/utils/array_args.h>
 #include <LightGBM/utils/common.h>
 #include <LightGBM/utils/openmp_wrapper.h>
 #include <LightGBM/utils/random.h>
@@ -378,9 +379,19 @@ class Dataset {
   inline uint64_t GroupBinBoundary(int group_idx) const {
     return group_bin_boundaries_[group_idx];
   }
+
+  inline uint64_t GroupBinBoundaryAlign(int group_idx) const {
+    return group_bin_boundaries_aligned_[group_idx];
+  }
+  
   inline uint64_t NumTotalBin() const {
     return group_bin_boundaries_.back();
   }
+
+  inline uint64_t NumTotalBinAligned() const {
+    return group_bin_boundaries_aligned_.back();
+  }
+
   inline std::vector<int> ValidFeatureIndices() const {
     std::vector<int> ret;
     for (int i = 0; i < num_total_features_; ++i) {
@@ -626,6 +637,7 @@ class Dataset {
   std::vector<int> feature2group_;
   std::vector<int> feature2subfeature_;
   std::vector<uint64_t> group_bin_boundaries_;
+  std::vector<uint64_t> group_bin_boundaries_aligned_;
   std::vector<int> group_feature_start_;
   std::vector<int> group_feature_cnt_;
   std::vector<int8_t> monotone_types_;
@@ -639,7 +651,7 @@ class Dataset {
   bool use_missing_;
   bool zero_as_missing_;
   std::vector<int> feature_need_push_zeros_;
-  mutable std::vector<hist_t> hist_buf_;
+  mutable  std::vector<std::vector<hist_t, AlignmentAllocator<hist_t, 32>>> hist_buf_;
 };
 
 }  // namespace LightGBM

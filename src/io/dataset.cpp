@@ -14,6 +14,13 @@
 #include <cstdio>
 #include <sstream>
 #include <unordered_map>
+#if defined(_MSC_VER)
+ /* Microsoft C/C++-compatible compiler */
+#include <intrin.h>
+#elif defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__))
+ /* GCC-compatible compiler, targeting x86/x86-64 */
+#include <x86intrin.h>
+#endif
 
 
 namespace LightGBM {
@@ -433,11 +440,16 @@ void Dataset::Construct(
   Log::Info("Total groups %d, multi-val groups %d.", num_groups_, num_multi_val_group);
   feature_groups_.shrink_to_fit();
   group_bin_boundaries_.clear();
+  group_bin_boundaries_aligned_.clear();
   uint64_t num_total_bin = 0;
+  uint64_t num_total_bin_aligned = 0;
   group_bin_boundaries_.push_back(num_total_bin);
+  group_bin_boundaries_aligned_.push_back(num_total_bin_aligned);
   for (int i = 0; i < num_groups_; ++i) {
     num_total_bin += feature_groups_[i]->num_total_bin_;
+    num_total_bin_aligned += ((feature_groups_[i]->num_total_bin_ + 31) / 32) * 32;
     group_bin_boundaries_.push_back(num_total_bin);
+    group_bin_boundaries_aligned_.push_back(num_total_bin_aligned);
   }
   int last_group = 0;
   group_feature_start_.reserve(num_groups_);
@@ -1028,7 +1040,7 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
         OMP_LOOP_EX_BEGIN();
         int group = used_dense_group[gi];
         // feature is not used
-        auto data_ptr = hist_data + group_bin_boundaries_[group] * 2;
+        auto data_ptr = hist_data + group_bin_boundaries_aligned_[group] * 2;
         const int num_bin = feature_groups_[group]->num_total_bin_;
         std::memset(reinterpret_cast<void*>(data_ptr), 0, num_bin* KHistEntrySize);
         // construct histograms for smaller leaf
@@ -1050,7 +1062,7 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
         OMP_LOOP_EX_BEGIN();
         int group = used_dense_group[gi];
         // feature is not used
-        auto data_ptr = hist_data + group_bin_boundaries_[group] * 2;
+        auto data_ptr = hist_data + group_bin_boundaries_aligned_[group] * 2;
         const int num_bin = feature_groups_[group]->num_total_bin_;
         std::memset(reinterpret_cast<void*>(data_ptr), 0, num_bin* KHistEntrySize);
         // construct histograms for smaller leaf
@@ -1076,7 +1088,7 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
         OMP_LOOP_EX_BEGIN();
         int group = used_dense_group[gi];
         // feature is not used
-        auto data_ptr = hist_data + group_bin_boundaries_[group] * 2;
+        auto data_ptr = hist_data + group_bin_boundaries_aligned_[group] * 2;
         const int num_bin = feature_groups_[group]->num_total_bin_;
         std::memset(reinterpret_cast<void*>(data_ptr), 0, num_bin* KHistEntrySize);
         // construct histograms for smaller leaf
@@ -1096,9 +1108,9 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
         OMP_LOOP_EX_BEGIN();
         int group = used_dense_group[gi];
         // feature is not used
-        auto data_ptr = hist_data + group_bin_boundaries_[group] * 2;
+        auto data_ptr = hist_data + group_bin_boundaries_aligned_[group] * 2;
         const int num_bin = feature_groups_[group]->num_total_bin_;
-        std::memset(reinterpret_cast<void*>(data_ptr), 0, num_bin * KHistEntrySize);
+        std::memset(reinterpret_cast<void*>(data_ptr), 0, num_bin* KHistEntrySize);
         // construct histograms for smaller leaf
         feature_groups_[group]->bin_data_->ConstructHistogram(
           0,
@@ -1125,8 +1137,13 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
       #endif
       int group = used_sparse_group[gi];
       const int num_bin = feature_groups_[group]->num_total_bin_;
-      if (2 * num_bin * num_threads > static_cast<int>(hist_buf_.size())) {
-        hist_buf_.resize(2 * num_bin * num_threads);
+      if (hist_buf_.empty()) {
+        hist_buf_.resize(num_threads);
+      }
+      if (2 * num_bin > static_cast<int>(hist_buf_[0].size())) {
+        for (int i = 0; i < num_threads; ++i) {
+          hist_buf_.resize(2 * num_bin);
+        }
         Log::Info("number of buffered bin %d", num_bin);
       }
       #ifdef TIMETAG
@@ -1140,7 +1157,7 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
       for (int tid = 0; tid < n_part; ++tid) {
         data_size_t start = tid * step;
         data_size_t end = std::min(start + step, num_data);
-        auto data_ptr = hist_buf_.data() + tid * num_bin * 2;
+        auto data_ptr = hist_buf_[tid].data();
         std::memset(reinterpret_cast<void*>(data_ptr), 0, num_bin* KHistEntrySize);
         if (data_indices != nullptr && num_data < num_data_) {
           if (!is_constant_hessian) {
@@ -1180,12 +1197,12 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
       sparse_bin_time += std::chrono::steady_clock::now() - start_time;
       start_time = std::chrono::steady_clock::now();
       #endif
-      auto data_ptr = hist_data + group_bin_boundaries_[group] * 2;
-      std::memset(reinterpret_cast<void*>(data_ptr), 0, num_bin * KHistEntrySize);
+      auto data_ptr = hist_data + group_bin_boundaries_aligned_[group] * 2;
+      std::memset(reinterpret_cast<void*>(data_ptr), 0, num_bin* KHistEntrySize);
 
       // don't merge bin 0
-      const int min_block_size = 512;
-      const int n_block = std::min(num_threads, (num_bin + min_block_size - 2) / min_block_size);
+      const int min_block_size = 1024;
+      const int n_block = (num_bin + min_block_size - 2) / min_block_size;
       const int num_bin_per_threads = (num_bin + n_block - 2) / n_block;
       if (!is_constant_hessian) {
         #pragma omp parallel for schedule(static)
@@ -1193,8 +1210,13 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
           const int start = t * num_bin_per_threads + 1;
           const int end = std::min(start + num_bin_per_threads, num_bin);
           for (int tid = 0; tid < n_part; ++tid) {
-            auto src_ptr = hist_buf_.data() + tid * num_bin * 2;
-            for (int i = start * 2; i < end * 2; i++) {
+            auto src_ptr = hist_buf_[tid].data();
+            int rest = (end * 2 - start * 2) % 4;
+            int i = start * 2;
+            for (; i < end * 2 - rest; i += 4) {
+              _mm256_store_pd(data_ptr + i, _mm256_add_pd(_mm256_load_pd(data_ptr + i), _mm256_load_pd(src_ptr + i)));
+            }
+            for (; i < end * 2; ++i) {
               data_ptr[i] += src_ptr[i];
             }
           }
@@ -1205,7 +1227,7 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
           const int start = t * num_bin_per_threads + 1;
           const int end = std::min(start + num_bin_per_threads, num_bin);
           for (int tid = 0; tid < n_part; ++tid) {
-            auto src_ptr = hist_buf_.data() + tid * num_bin * 2;
+            auto src_ptr = hist_buf_[tid].data();
             for (int i = start * 2; i < end * 2; i++) {
               data_ptr[i] += src_ptr[i];
             }
