@@ -769,59 +769,69 @@ int32_t SerialTreeLearner::ForceSplits(Tree* tree, const Json& forced_split_json
 }
 
 void SerialTreeLearner::Split(Tree* tree, int best_leaf, int* left_leaf, int* right_leaf) {
-  const SplitInfo& best_split_info = best_split_per_leaf_[best_leaf];
+  SplitInfo& best_split_info = best_split_per_leaf_[best_leaf];
   const int inner_feature_index = train_data_->InnerFeatureIndex(best_split_info.feature);
   if (cegb_ != nullptr) {
     cegb_->UpdateLeafBestSplits(tree, best_leaf, &best_split_info, &best_split_per_leaf_);
   }
-  // left = parent
   *left_leaf = best_leaf;
+  auto next_leaf_id = tree->NextLeafId();
+
   bool is_numerical_split = train_data_->FeatureBinMapper(inner_feature_index)->bin_type() == BinType::NumericalBin;
   if (is_numerical_split) {
     auto threshold_double = train_data_->RealThreshold(inner_feature_index, best_split_info.threshold);
+    data_partition_->Split(best_leaf, train_data_, inner_feature_index,
+      &best_split_info.threshold, 1, best_split_info.default_left, next_leaf_id);
+    best_split_info.left_count = data_partition_->leaf_count(*left_leaf);
+    best_split_info.right_count = data_partition_->leaf_count(next_leaf_id);
     // split tree, will return right leaf
     *right_leaf = tree->Split(best_leaf,
-                              inner_feature_index,
-                              best_split_info.feature,
-                              best_split_info.threshold,
-                              threshold_double,
-                              static_cast<double>(best_split_info.left_output),
-                              static_cast<double>(best_split_info.right_output),
-                              static_cast<data_size_t>(best_split_info.left_count),
-                              static_cast<data_size_t>(best_split_info.right_count),
-                              static_cast<double>(best_split_info.left_sum_hessian),
-                              static_cast<double>(best_split_info.right_sum_hessian),
-                              static_cast<float>(best_split_info.gain),
-                              train_data_->FeatureBinMapper(inner_feature_index)->missing_type(),
-                              best_split_info.default_left);
-    data_partition_->Split(best_leaf, train_data_, inner_feature_index,
-                           &best_split_info.threshold, 1, best_split_info.default_left, *right_leaf);
+      inner_feature_index,
+      best_split_info.feature,
+      best_split_info.threshold,
+      threshold_double,
+      static_cast<double>(best_split_info.left_output),
+      static_cast<double>(best_split_info.right_output),
+      static_cast<data_size_t>(best_split_info.left_count),
+      static_cast<data_size_t>(best_split_info.right_count),
+      static_cast<double>(best_split_info.left_sum_hessian),
+      static_cast<double>(best_split_info.right_sum_hessian),
+      static_cast<float>(best_split_info.gain),
+      train_data_->FeatureBinMapper(inner_feature_index)->missing_type(),
+      best_split_info.default_left);
+
   } else {
+
     std::vector<uint32_t> cat_bitset_inner = Common::ConstructBitset(best_split_info.cat_threshold.data(), best_split_info.num_cat_threshold);
     std::vector<int> threshold_int(best_split_info.num_cat_threshold);
     for (int i = 0; i < best_split_info.num_cat_threshold; ++i) {
       threshold_int[i] = static_cast<int>(train_data_->RealThreshold(inner_feature_index, best_split_info.cat_threshold[i]));
     }
     std::vector<uint32_t> cat_bitset = Common::ConstructBitset(threshold_int.data(), best_split_info.num_cat_threshold);
-    *right_leaf = tree->SplitCategorical(best_leaf,
-                                         inner_feature_index,
-                                         best_split_info.feature,
-                                         cat_bitset_inner.data(),
-                                         static_cast<int>(cat_bitset_inner.size()),
-                                         cat_bitset.data(),
-                                         static_cast<int>(cat_bitset.size()),
-                                         static_cast<double>(best_split_info.left_output),
-                                         static_cast<double>(best_split_info.right_output),
-                                         static_cast<data_size_t>(best_split_info.left_count),
-                                         static_cast<data_size_t>(best_split_info.right_count),
-                                         static_cast<double>(best_split_info.left_sum_hessian),
-                                         static_cast<double>(best_split_info.right_sum_hessian),
-                                         static_cast<float>(best_split_info.gain),
-                                         train_data_->FeatureBinMapper(inner_feature_index)->missing_type());
-    data_partition_->Split(best_leaf, train_data_, inner_feature_index,
-                           cat_bitset_inner.data(), static_cast<int>(cat_bitset_inner.size()), best_split_info.default_left, *right_leaf);
-  }
 
+    data_partition_->Split(best_leaf, train_data_, inner_feature_index,
+      cat_bitset_inner.data(), static_cast<int>(cat_bitset_inner.size()), best_split_info.default_left, *right_leaf);
+
+    best_split_info.left_count = data_partition_->leaf_count(*left_leaf);
+    best_split_info.right_count = data_partition_->leaf_count(next_leaf_id);
+
+    *right_leaf = tree->SplitCategorical(best_leaf,
+      inner_feature_index,
+      best_split_info.feature,
+      cat_bitset_inner.data(),
+      static_cast<int>(cat_bitset_inner.size()),
+      cat_bitset.data(),
+      static_cast<int>(cat_bitset.size()),
+      static_cast<double>(best_split_info.left_output),
+      static_cast<double>(best_split_info.right_output),
+      static_cast<data_size_t>(best_split_info.left_count),
+      static_cast<data_size_t>(best_split_info.right_count),
+      static_cast<double>(best_split_info.left_sum_hessian),
+      static_cast<double>(best_split_info.right_sum_hessian),
+      static_cast<float>(best_split_info.gain),
+      train_data_->FeatureBinMapper(inner_feature_index)->missing_type());
+  }
+  CHECK(*right_leaf == next_leaf_id);
   #ifdef DEBUG
   CHECK(best_split_info.left_count == data_partition_->leaf_count(best_leaf));
   #endif
