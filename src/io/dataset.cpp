@@ -1142,7 +1142,7 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
       }
       if (2 * num_bin > static_cast<int>(hist_buf_[0].size())) {
         for (int i = 0; i < num_threads; ++i) {
-          hist_buf_.resize(2 * num_bin);
+          hist_buf_[i].resize(2 * num_bin);
         }
         Log::Info("number of buffered bin %d", num_bin);
       }
@@ -1202,13 +1202,12 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
 
       // don't merge bin 0
       const int min_block_size = 1024;
-      const int n_block = (num_bin + min_block_size - 2) / min_block_size;
-      const int num_bin_per_threads = (num_bin + n_block - 2) / n_block;
+      const int n_block = (num_bin + min_block_size - 1) / min_block_size;
       if (!is_constant_hessian) {
         #pragma omp parallel for schedule(static)
         for (int t = 0; t < n_block; ++t) {
-          const int start = t * num_bin_per_threads + 1;
-          const int end = std::min(start + num_bin_per_threads, num_bin);
+          const int start = t * min_block_size;
+          const int end = std::min(start + min_block_size, num_bin);
           for (int tid = 0; tid < n_part; ++tid) {
             auto src_ptr = hist_buf_[tid].data();
             int rest = (end * 2 - start * 2) % 4;
@@ -1224,8 +1223,8 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
       } else {
         #pragma omp parallel for schedule(static)
         for (int t = 0; t < n_block; ++t) {
-          const int start = t * num_bin_per_threads + 1;
-          const int end = std::min(start + num_bin_per_threads, num_bin);
+          const int start = t * min_block_size;
+          const int end = std::min(start + min_block_size, num_bin);
           for (int tid = 0; tid < n_part; ++tid) {
             auto src_ptr = hist_buf_[tid].data();
             for (int i = start * 2; i < end * 2; i++) {
