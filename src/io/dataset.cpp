@@ -1194,9 +1194,8 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
           const int end = std::min(start + num_bin_per_threads, num_bin);
           for (int tid = 0; tid < n_part; ++tid) {
             auto src_ptr = hist_buf_.data() + tid * num_bin * 2;
-            for (int i = start; i < end; i++) {
-              GET_GRAD(data_ptr, i) += GET_GRAD(src_ptr, i);
-              GET_HESS(data_ptr, i) += GET_HESS(src_ptr, i);
+            for (int i = start * 2; i < end * 2; i++) {
+              data_ptr[i] += src_ptr[i];
             }
           }
         }
@@ -1207,9 +1206,8 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
           const int end = std::min(start + num_bin_per_threads, num_bin);
           for (int tid = 0; tid < n_part; ++tid) {
             auto src_ptr = hist_buf_.data() + tid * num_bin * 2;
-            for (int i = start; i < end; i++) {
-              GET_GRAD(data_ptr, i) += GET_GRAD(src_ptr, i);
-              GET_HESS(data_ptr, i) += GET_HESS(src_ptr, i);
+            for (int i = start * 2; i < end * 2; i++) {
+              data_ptr[i] += src_ptr[i];
             }
           }
           for (int i = start; i < end; i++) {
