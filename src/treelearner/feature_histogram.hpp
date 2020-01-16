@@ -766,7 +766,6 @@ public:
         }
         offset += static_cast<uint64_t>(num_bin);
       }
-      CHECK(offset == num_total_bin);
       OMP_LOOP_EX_END();
     }
     OMP_THROW_EX();
