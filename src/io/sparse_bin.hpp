@@ -98,9 +98,14 @@ public:
 
   BinIterator* GetIterator(uint32_t min_bin, uint32_t max_bin, uint32_t most_freq_bin) const override;
 
+  #define ACC_GH(hist, i, g, h) \
+  const auto ti = static_cast<int>(i) << 1; \
+  hist[ti] += g; \
+  hist[ti + 1] += h; \
+
   void ConstructHistogram(const data_size_t* data_indices, data_size_t start, data_size_t end,
     const score_t* ordered_gradients, const score_t* ordered_hessians,
-    HistogramBinEntry* out) const override {
+    hist_t* out) const override {
     data_size_t i_delta, cur_pos;
     InitIndex(data_indices[start], &i_delta, &cur_pos);
     data_size_t i = start;
@@ -112,9 +117,7 @@ public:
         if (++i >= end) { break; }
       } else {
         const VAL_T bin = vals_[i_delta];
-        out[bin].sum_gradients += ordered_gradients[i];
-        out[bin].sum_hessians += ordered_hessians[i];
-        ++out[bin].cnt;
+        ACC_GH(out, bin, ordered_gradients[i], ordered_hessians[i]);
         if (++i >= end) { break; }
         cur_pos += deltas_[++i_delta];
         if (i_delta >= num_vals_) { break; }
@@ -124,7 +127,7 @@ public:
 
   void ConstructHistogram(data_size_t start, data_size_t end,
     const score_t* ordered_gradients, const score_t* ordered_hessians,
-    HistogramBinEntry* out) const override {
+    hist_t* out) const override {
     data_size_t i_delta, cur_pos;
     InitIndex(start, &i_delta, &cur_pos);
     while (cur_pos < start && i_delta < num_vals_) {
@@ -132,16 +135,14 @@ public:
     }
     while (cur_pos < end && i_delta < num_vals_) {
       const VAL_T bin = vals_[i_delta];
-      out[bin].sum_gradients += ordered_gradients[cur_pos];
-      out[bin].sum_hessians += ordered_hessians[cur_pos];
-      ++out[bin].cnt;
+      ACC_GH(out, bin, ordered_gradients[cur_pos], ordered_hessians[cur_pos]);
       cur_pos += deltas_[++i_delta];
     }
   }
 
   void ConstructHistogram(const data_size_t* data_indices, data_size_t start, data_size_t end,
     const score_t* ordered_gradients,
-    HistogramBinEntry* out) const override {
+    hist_t* out) const override {
     data_size_t i_delta, cur_pos;
     InitIndex(data_indices[start], &i_delta, &cur_pos);
     data_size_t i = start;
@@ -153,8 +154,7 @@ public:
         if (++i >= end) { break; }
       } else {
         const VAL_T bin = vals_[i_delta];
-        out[bin].sum_gradients += ordered_gradients[i];
-        ++out[bin].cnt;
+        ACC_GH(out, bin, ordered_gradients[i], 1.0f);
         if (++i >= end) { break; }
         cur_pos += deltas_[++i_delta];
         if (i_delta >= num_vals_) { break; }
@@ -164,7 +164,7 @@ public:
 
   void ConstructHistogram(data_size_t start, data_size_t end,
     const score_t* ordered_gradients,
-    HistogramBinEntry* out) const override {
+    hist_t* out) const override {
     data_size_t i_delta, cur_pos;
     InitIndex(start, &i_delta, &cur_pos);
     while (cur_pos < start && i_delta < num_vals_) {
@@ -172,11 +172,11 @@ public:
     }
     while (cur_pos < end && i_delta < num_vals_) {
       const VAL_T bin = vals_[i_delta];
-      out[bin].sum_gradients += ordered_gradients[cur_pos];
-      ++out[bin].cnt;
+      ACC_GH(out, bin, ordered_gradients[cur_pos], 1.0f);
       cur_pos += deltas_[++i_delta];
     }
   }
+  #undef ACC_GH
 
   inline void NextNonzeroFast(data_size_t* i_delta,
     data_size_t* cur_pos) const {

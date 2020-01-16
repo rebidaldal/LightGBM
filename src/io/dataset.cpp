@@ -1140,8 +1140,8 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
       for (int tid = 0; tid < n_part; ++tid) {
         data_size_t start = tid * step;
         data_size_t end = std::min(start + step, num_data);
-        auto data_ptr = hist_buf_.data() + tid * num_bin;
-        std::memset(reinterpret_cast<void*>(data_ptr + 1), 0, (num_bin - 1) * sizeof(HistogramBinEntry));
+        auto data_ptr = hist_buf_.data() + tid * num_bin * 2;
+        std::memset(reinterpret_cast<void*>(data_ptr), 0, num_bin* KHistEntrySize);
         if (data_indices != nullptr && num_data < num_data_) {
           if (!is_constant_hessian) {
             feature_groups_[group]->bin_data_->ConstructHistogram(
@@ -1180,8 +1180,8 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
       sparse_bin_time += std::chrono::steady_clock::now() - start_time;
       start_time = std::chrono::steady_clock::now();
       #endif
-      auto data_ptr = hist_data + group_bin_boundaries_[group];
-      std::memset(reinterpret_cast<void*>(data_ptr + 1), 0, (num_bin - 1) * sizeof(HistogramBinEntry));
+      auto data_ptr = hist_data + group_bin_boundaries_[group] * 2;
+      std::memset(reinterpret_cast<void*>(data_ptr), 0, num_bin * KHistEntrySize);
 
       // don't merge bin 0
       const int min_block_size = 512;
@@ -1193,11 +1193,10 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
           const int start = t * num_bin_per_threads + 1;
           const int end = std::min(start + num_bin_per_threads, num_bin);
           for (int tid = 0; tid < n_part; ++tid) {
-            auto src_ptr = hist_buf_.data() + tid * num_bin;
+            auto src_ptr = hist_buf_.data() + tid * num_bin * 2;
             for (int i = start; i < end; i++) {
-              data_ptr[i].sum_gradients += src_ptr[i].sum_gradients;
-              data_ptr[i].sum_hessians += src_ptr[i].sum_hessians;
-              data_ptr[i].cnt += src_ptr[i].cnt;
+              GET_GRAD(data_ptr, i) += GET_GRAD(src_ptr, i);
+              GET_HESS(data_ptr, i) += GET_HESS(src_ptr, i);
             }
           }
         }
@@ -1207,14 +1206,14 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
           const int start = t * num_bin_per_threads + 1;
           const int end = std::min(start + num_bin_per_threads, num_bin);
           for (int tid = 0; tid < n_part; ++tid) {
-            auto src_ptr = hist_buf_.data() + tid * num_bin;
+            auto src_ptr = hist_buf_.data() + tid * num_bin * 2;
             for (int i = start; i < end; i++) {
-              data_ptr[i].sum_gradients += src_ptr[i].sum_gradients;
-              data_ptr[i].cnt += src_ptr[i].cnt;
+              GET_GRAD(data_ptr, i) += GET_GRAD(src_ptr, i);
+              GET_HESS(data_ptr, i) += GET_HESS(src_ptr, i);
             }
           }
           for (int i = start; i < end; i++) {
-            data_ptr[i].sum_hessians = data_ptr[i].cnt * hessians[0];
+            GET_HESS(data_ptr, i) = GET_HESS(data_ptr, i) * hessians[0];
           }
         }
       }

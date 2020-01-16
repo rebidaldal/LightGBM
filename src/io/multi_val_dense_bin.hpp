@@ -33,6 +33,7 @@ public:
   inline uint32_t Get(data_size_t idx) override;
   inline uint32_t RawGet(data_size_t idx) override {
     Log::Fatal("No RawGet for MultiValDenseBinIterator");
+    return 0;
   }
   inline void Reset(data_size_t) override {}
 
@@ -73,9 +74,14 @@ public:
 
   BinIterator* GetIterator(uint32_t min_bin, uint32_t max_bin, uint32_t default_bin) const override;
 
+  #define ACC_GH(hist, i, g, h) \
+  const auto ti = static_cast<int>(i) << 1; \
+  hist[ti] += g; \
+  hist[ti + 1] += h; \
+
   void ConstructHistogram(const data_size_t* data_indices, data_size_t start, data_size_t end,
     const score_t* ordered_gradients, const score_t* ordered_hessians,
-    HistogramBinEntry* out) const override {
+    hist_t* out) const override {
     const data_size_t prefetch_size = 16;
     for (data_size_t i = start; i < end; ++i) {
       if (prefetch_size + i < end) {
@@ -85,16 +91,14 @@ public:
       }
       for (data_size_t idx = RowPtr(data_indices[i]); idx < RowPtr(data_indices[i] + 1); ++idx) {
         const VAL_T bin = data_[idx];
-        out[bin].sum_gradients += ordered_gradients[i];
-        out[bin].sum_hessians += ordered_hessians[i];
-        ++out[bin].cnt;
+        ACC_GH(out, bin, ordered_gradients[i], ordered_hessians[i]);
       }
     }
   }
 
   void ConstructHistogram(data_size_t start, data_size_t end,
     const score_t* ordered_gradients, const score_t* ordered_hessians,
-    HistogramBinEntry* out) const override {
+    hist_t* out) const override {
     const data_size_t prefetch_size = 16;
     for (data_size_t i = start; i < end; ++i) {
       if (prefetch_size + i < end) {
@@ -104,16 +108,14 @@ public:
       }
       for (data_size_t idx = RowPtr(i); idx < RowPtr(i + 1); ++idx) {
         const VAL_T bin = data_[idx];
-        out[bin].sum_gradients += ordered_gradients[i];
-        out[bin].sum_hessians += ordered_hessians[i];
-        ++out[bin].cnt;
+        ACC_GH(out, bin, ordered_gradients[i], ordered_hessians[i]);
       }
     }
   }
 
   void ConstructHistogram(const data_size_t* data_indices, data_size_t start, data_size_t end,
     const score_t* ordered_gradients,
-    HistogramBinEntry* out) const override {
+    hist_t* out) const override {
     const data_size_t prefetch_size = 16;
     for (data_size_t i = start; i < end; ++i) {
       if (prefetch_size + i < end) {
@@ -123,15 +125,14 @@ public:
       }
       for (data_size_t idx = RowPtr(data_indices[i]); idx < RowPtr(data_indices[i] + 1); ++idx) {
         const VAL_T bin = data_[idx];
-        out[bin].sum_gradients += ordered_gradients[i];
-        ++out[bin].cnt;
+        ACC_GH(out, bin, ordered_gradients[i], 1.0f);
       }
     }
   }
 
   void ConstructHistogram(data_size_t start, data_size_t end,
     const score_t* ordered_gradients,
-    HistogramBinEntry* out) const override {
+    hist_t* out) const override {
     const data_size_t prefetch_size = 16;
     for (data_size_t i = start; i < end; ++i) {
       if (prefetch_size + i < end) {
@@ -141,11 +142,11 @@ public:
       }
       for (data_size_t idx = RowPtr(i); idx < RowPtr(i + 1); ++idx) {
         const VAL_T bin = data_[idx];
-        out[bin].sum_gradients += ordered_gradients[i];
-        ++out[bin].cnt;
+        ACC_GH(out, bin, ordered_gradients[i], 1.0f);
       }
     }
   }
+  #undef ACC_GH
 
   data_size_t Split(
     uint32_t min_bin, uint32_t max_bin, uint32_t default_bin, uint32_t most_freq_bin, MissingType missing_type, bool default_left,
