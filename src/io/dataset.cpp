@@ -922,7 +922,7 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
         // feature is not used
         auto data_ptr = hist_data + group_bin_boundaries_[group] * 2;
         const int num_bin = feature_groups_[group]->num_total_bin_;
-        std::memset(reinterpret_cast<void*>(data_ptr + KHistOffset), 0, (num_bin - 1) * KHistEntrySize);
+        std::memset(reinterpret_cast<void*>(data_ptr), 0, num_bin* KHistEntrySize);
         // construct histograms for smaller leaf
         if (ref_ordered_bins[group] == nullptr) {
           // if not use ordered bin
@@ -952,7 +952,7 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
         // feature is not used
         auto data_ptr = hist_data + group_bin_boundaries_[group] * 2;
         const int num_bin = feature_groups_[group]->num_total_bin_;
-        std::memset(reinterpret_cast<void*>(data_ptr + KHistOffset), 0, (num_bin - 1)* KHistEntrySize);
+        std::memset(reinterpret_cast<void*>(data_ptr), 0, num_bin* KHistEntrySize);
         // construct histograms for smaller leaf
         if (ref_ordered_bins[group] == nullptr) {
           // if not use ordered bin
@@ -986,7 +986,7 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
         // feature is not used
         auto data_ptr = hist_data + group_bin_boundaries_[group] * 2;
         const int num_bin = feature_groups_[group]->num_total_bin_;
-        std::memset(reinterpret_cast<void*>(data_ptr + KHistOffset), 0, (num_bin - 1)* KHistEntrySize);
+        std::memset(reinterpret_cast<void*>(data_ptr), 0, num_bin* KHistEntrySize);
         // construct histograms for smaller leaf
         if (ref_ordered_bins[group] == nullptr) {
           // if not use ordered bin
@@ -1015,7 +1015,7 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
         // feature is not used
         auto data_ptr = hist_data + group_bin_boundaries_[group] * 2;
         const int num_bin = feature_groups_[group]->num_total_bin_;
-        std::memset(reinterpret_cast<void*>(data_ptr + KHistOffset), 0, (num_bin - 1)* KHistEntrySize);
+        std::memset(reinterpret_cast<void*>(data_ptr), 0, num_bin * KHistEntrySize);
         // construct histograms for smaller leaf
         if (ref_ordered_bins[group] == nullptr) {
           // if not use ordered bin
