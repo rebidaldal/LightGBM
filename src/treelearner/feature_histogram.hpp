@@ -74,9 +74,8 @@ public:
   * \param other The histogram that want to subtract
   */
   void Subtract(const FeatureHistogram& other) {
-    for (int i = 0; i < meta_->num_bin - meta_->offset; ++i) {
-      GET_GRAD(data_, i) = GET_GRAD(other.data_, i);
-      GET_HESS(data_, i) = GET_HESS(other.data_, i);
+    for (int i = 0; i < (meta_->num_bin - meta_->offset) * 2; ++i) {
+      data_[i] -= other.data_[i];
     }
   }
 
