@@ -1125,8 +1125,8 @@ void Dataset::ConstructHistograms(const std::vector<int8_t>& is_feature_used,
       #endif
       int group = used_sparse_group[gi];
       const int num_bin = feature_groups_[group]->num_total_bin_;
-      if (num_bin * num_threads > static_cast<int>(hist_buf_.size())) {
-        hist_buf_.resize(num_bin * num_threads);
+      if (2 * num_bin * num_threads > static_cast<int>(hist_buf_.size())) {
+        hist_buf_.resize(2 * num_bin * num_threads);
         Log::Info("number of buffered bin %d", num_bin);
       }
       #ifdef TIMETAG
