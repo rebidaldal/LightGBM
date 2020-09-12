@@ -21,7 +21,7 @@ class LeafSplits {
  public:
   explicit LeafSplits(data_size_t num_data)
     :num_data_in_leaf_(num_data), num_data_(num_data),
-    data_indices_(nullptr) {
+    data_indices_(nullptr), weight_(0) {
   }
   void ResetNumData(data_size_t num_data) {
     num_data_ = num_data;
@@ -31,27 +31,32 @@ class LeafSplits {
   }
 
   /*!
-
   * \brief Init split on current leaf on partial data. 
   * \param leaf Index of current leaf
   * \param data_partition current data partition
   * \param sum_gradients
   * \param sum_hessians
   */
-  void Init(int leaf, const DataPartition* data_partition, double sum_gradients, double sum_hessians) {
+  void Init(int leaf, const DataPartition* data_partition, double sum_gradients,
+            double sum_hessians, double weight) {
     leaf_index_ = leaf;
     data_indices_ = data_partition->GetIndexOnLeaf(leaf, &num_data_in_leaf_);
     sum_gradients_ = sum_gradients;
     sum_hessians_ = sum_hessians;
-    min_val_ = -std::numeric_limits<double>::max();
-    max_val_ = std::numeric_limits<double>::max();
+    weight_ = weight;
   }
 
-  void SetValueConstraint(double min, double max) {
-    min_val_ = min;
-    max_val_ = max;
+  /*!
+  * \brief Init split on current leaf on partial data.
+  * \param leaf Index of current leaf
+  * \param sum_gradients
+  * \param sum_hessians
+  */
+  void Init(int leaf, double sum_gradients, double sum_hessians) {
+    leaf_index_ = leaf;
+    sum_gradients_ = sum_gradients;
+    sum_hessians_ = sum_hessians;
   }
-
 
   /*!
   * \brief Init splits on current leaf, it will traverse all data to sum up the results
@@ -71,8 +76,6 @@ class LeafSplits {
     }
     sum_gradients_ = tmp_sum_gradients;
     sum_hessians_ = tmp_sum_hessians;
-    min_val_ = -std::numeric_limits<double>::max();
-    max_val_ = std::numeric_limits<double>::max();
   }
 
   /*!
@@ -95,8 +98,6 @@ class LeafSplits {
     }
     sum_gradients_ = tmp_sum_gradients;
     sum_hessians_ = tmp_sum_hessians;
-    min_val_ = -std::numeric_limits<double>::max();
-    max_val_ = std::numeric_limits<double>::max();
   }
 
 
@@ -109,8 +110,6 @@ class LeafSplits {
     leaf_index_ = 0;
     sum_gradients_ = sum_gradients;
     sum_hessians_ = sum_hessians;
-    min_val_ = -std::numeric_limits<double>::max();
-    max_val_ = std::numeric_limits<double>::max();
   }
 
   /*!
@@ -120,13 +119,11 @@ class LeafSplits {
     leaf_index_ = -1;
     data_indices_ = nullptr;
     num_data_in_leaf_ = 0;
-    min_val_ = -std::numeric_limits<double>::max();
-    max_val_ = std::numeric_limits<double>::max();
   }
 
 
   /*! \brief Get current leaf index */
-  int LeafIndex() const { return leaf_index_; }
+  int leaf_index() const { return leaf_index_; }
 
   /*! \brief Get numer of data in current leaf */
   data_size_t num_data_in_leaf() const { return num_data_in_leaf_; }
@@ -137,12 +134,12 @@ class LeafSplits {
   /*! \brief Get sum of hessians of current leaf */
   double sum_hessians() const { return sum_hessians_; }
 
-  double max_constraint() const { return max_val_; }
-
-  double min_constraint() const { return min_val_; }
-
   /*! \brief Get indices of data of current leaf */
   const data_size_t* data_indices() const { return data_indices_; }
+
+  /*! \brief Get weight of current leaf */
+  double weight() const { return weight_; }
+
 
 
  private:
@@ -158,8 +155,8 @@ class LeafSplits {
   double sum_hessians_;
   /*! \brief indices of data of current leaf */
   const data_size_t* data_indices_;
-  double min_val_;
-  double max_val_;
+  /*! \brief weight of current leaf */
+  double weight_;
 };
 
 }  // namespace LightGBM

@@ -1,13 +1,13 @@
-#' readRDS for \code{lgb.Booster} models
-#'
-#' Attempts to load a model using RDS.
-#'
+#' @name readRDS.lgb.Booster
+#' @title readRDS for \code{lgb.Booster} models
+#' @description Attempts to load a model stored in a \code{.rds} file, using \code{\link[base]{readRDS}}
 #' @param file a connection or the name of the file where the R object is saved to or read from.
 #' @param refhook a hook function for handling reference objects.
 #'
 #' @return \code{lgb.Booster}.
 #'
 #' @examples
+#' \dontrun{
 #' library(lightgbm)
 #' data(agaricus.train, package = "lightgbm")
 #' train <- agaricus.train
@@ -26,13 +26,13 @@
 #'   , learning_rate = 1.0
 #'   , early_stopping_rounds = 5L
 #' )
-#' saveRDS.lgb.Booster(model, "model.rds")
-#' new_model <- readRDS.lgb.Booster("model.rds")
-#'
+#' model_file <- tempfile(fileext = ".rds")
+#' saveRDS.lgb.Booster(model, model_file)
+#' new_model <- readRDS.lgb.Booster(model_file)
+#' }
 #' @export
 readRDS.lgb.Booster <- function(file = "", refhook = NULL) {
 
-  # Read RDS file
   object <- readRDS(file = file, refhook = refhook)
 
   # Check if object has the model stored

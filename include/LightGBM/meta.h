@@ -5,10 +5,11 @@
 #ifndef LIGHTGBM_META_H_
 #define LIGHTGBM_META_H_
 
-#include <limits>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -58,6 +59,9 @@ typedef int32_t comm_size_t;
 using PredictFunction =
 std::function<void(const std::vector<std::pair<int, double>>&, double* output)>;
 
+using PredictSparseFunction =
+std::function<void(const std::vector<std::pair<int, double>>&, std::vector<std::unordered_map<int, double>>* output)>;
+
 typedef void(*ReduceFunction)(const char* input, char* output, int type_size, comm_size_t array_size);
 
 
@@ -71,9 +75,15 @@ typedef void(*AllgatherFunction)(char* input, comm_size_t input_size, const comm
 
 #define NO_SPECIFIC (-1)
 
-// Prefetch size is usually 64 bytes
-const int kCacheLineSize = 64;
+const int kAlignedSize = 32;
+
+#define SIZE_ALIGNED(t) ((t) + kAlignedSize - 1) / kAlignedSize * kAlignedSize
+
+// Refer to https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-4-c4127?view=vs-2019
+#ifdef _MSC_VER
+  #pragma warning(disable : 4127)
+#endif
 
 }  // namespace LightGBM
 
-#endif   // LightGBM_META_H_
+#endif  // LightGBM_META_H_

@@ -7,6 +7,7 @@ This page contains parameters tuning guides for different scenarios.
 
 -  `Parameters <./Parameters.rst>`__
 -  `Python API <./Python-API.rst>`__
+-  `Optuna`_ for automated hyperparameter tuning
 
 Tune Parameters for the Leaf-wise (Best-first) Tree
 ---------------------------------------------------
@@ -77,3 +78,9 @@ Deal with Over-fitting
 -  Try ``lambda_l1``, ``lambda_l2`` and ``min_gain_to_split`` for regularization
 
 -  Try ``max_depth`` to avoid growing deep tree
+
+-  Try ``extra_trees``
+
+-  Try increasing ``path_smooth``
+
+.. _Optuna: https://medium.com/optuna/lightgbm-tuner-new-optuna-integration-for-hyperparameter-optimization-8b7095e99258

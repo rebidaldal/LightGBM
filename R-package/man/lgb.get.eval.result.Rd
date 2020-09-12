@@ -15,11 +15,12 @@ lgb.get.eval.result(
 \arguments{
 \item{booster}{Object of class \code{lgb.Booster}}
 
-\item{data_name}{name of dataset}
+\item{data_name}{Name of the dataset to return evaluation results for.}
 
-\item{eval_name}{name of evaluation}
+\item{eval_name}{Name of the evaluation metric to return results for.}
 
-\item{iters}{iterations, NULL will return all}
+\item{iters}{An integer vector of iterations you want to get evaluation results for. If NULL
+(the default), evaluation results for all iterations will be returned.}
 
 \item{is_err}{TRUE will return evaluation error instead}
 }
@@ -27,10 +28,12 @@ lgb.get.eval.result(
 vector of evaluation result
 }
 \description{
-Get record evaluation result from booster
+Given a \code{lgb.Booster}, return evaluation results for a
+             particular metric on a particular dataset.
 }
 \examples{
-library(lightgbm)
+\dontrun{
+# train a regression model
 data(agaricus.train, package = "lightgbm")
 train <- agaricus.train
 dtrain <- lgb.Dataset(train$data, label = train$label)
@@ -42,11 +45,19 @@ valids <- list(test = dtest)
 model <- lgb.train(
   params = params
   , data = dtrain
-  , nrounds = 10L
+  , nrounds = 5L
   , valids = valids
   , min_data = 1L
   , learning_rate = 1.0
-  , early_stopping_rounds = 5L
 )
+
+# Examine valid data_name values
+print(setdiff(names(model$record_evals), "start_iter"))
+
+# Examine valid eval_name values for dataset "test"
+print(names(model$record_evals[["test"]]))
+
+# Get L2 values for "test" dataset
 lgb.get.eval.result(model, "test", "l2")
+}
 }

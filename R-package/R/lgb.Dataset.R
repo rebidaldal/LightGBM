@@ -32,6 +32,14 @@ Dataset <- R6::R6Class(
                           info = list(),
                           ...) {
 
+      # validate inputs early to avoid unnecessary computation
+      if (!(is.null(reference) || lgb.check.r6.class(reference, "lgb.Dataset"))) {
+          stop("lgb.Dataset: If provided, reference must be a ", sQuote("lgb.Dataset"))
+      }
+      if (!(is.null(predictor) || lgb.check.r6.class(predictor, "lgb.Predictor"))) {
+          stop("lgb.Dataset: If provided, predictor must be a ", sQuote("lgb.Predictor"))
+      }
+
       # Check for additional parameters
       additional_params <- list(...)
 
@@ -54,20 +62,6 @@ Dataset <- R6::R6Class(
 
         }
 
-      }
-
-      # Check for dataset reference
-      if (!is.null(reference)) {
-        if (!lgb.check.r6.class(reference, "lgb.Dataset")) {
-          stop("lgb.Dataset: Can only use ", sQuote("lgb.Dataset"), " as reference")
-        }
-      }
-
-      # Check for predictor reference
-      if (!is.null(predictor)) {
-        if (!lgb.check.r6.class(predictor, "lgb.Predictor")) {
-          stop("lgb.Dataset: Only can use ", sQuote("lgb.Predictor"), " as predictor")
-        }
       }
 
       # Check for matrix format
@@ -111,7 +105,6 @@ Dataset <- R6::R6Class(
         , ...
       )
 
-      # Return ret
       return(invisible(ret))
 
     },
@@ -192,7 +185,7 @@ Dataset <- R6::R6Class(
       if (!is.null(private$reference)) {
         ref_handle <- private$reference$.__enclos_env__$private$get_handle()
       }
-      handle <- NA_real_
+      handle <- lgb.null.handle()
 
       # Not subsetting
       if (is.null(private$used_indices)) {
@@ -318,7 +311,6 @@ Dataset <- R6::R6Class(
         stop("lgb.Dataset.construct: label should be set")
       }
 
-      # Return self
       return(invisible(self))
 
     },
@@ -411,7 +403,6 @@ Dataset <- R6::R6Class(
 
       }
 
-      # Return self
       return(invisible(self))
 
     },
@@ -510,7 +501,6 @@ Dataset <- R6::R6Class(
 
       }
 
-      # Return self
       return(invisible(self))
 
     },
@@ -536,20 +526,46 @@ Dataset <- R6::R6Class(
 
     # Update parameters
     update_params = function(params) {
-
-      # Parameter updating
-      if (!lgb.is.null.handle(private$handle)) {
-        lgb.call(
-          "LGBM_DatasetUpdateParam_R"
-          , ret = NULL
-          , private$handle
-          , lgb.params2str(params)
-        )
+      if (length(params) == 0L) {
         return(invisible(self))
       }
-      private$params <- modifyList(private$params, params)
+      if (lgb.is.null.handle(private$handle)) {
+        private$params <- modifyList(private$params, params)
+      } else {
+        call_state <- 0L
+        call_state <- .Call(
+          "LGBM_DatasetUpdateParamChecking_R"
+          , lgb.params2str(private$params)
+          , lgb.params2str(params)
+          , call_state
+          , PACKAGE = "lib_lightgbm"
+        )
+        call_state <- as.integer(call_state)
+        if (call_state != 0L) {
+
+          # raise error if raw data is freed
+          if (is.null(private$raw_data)) {
+            lgb.last_error()
+          }
+
+          # Overwrite paramms
+          private$params <- modifyList(private$params, params)
+          self$finalize()
+        }
+      }
       return(invisible(self))
 
+    },
+
+    get_params = function() {
+      dataset_params <- unname(unlist(.DATASET_PARAMETERS()))
+      ret <- list()
+      for (param_key in names(private$params)) {
+        if (param_key %in% dataset_params) {
+          ret[[param_key]] <- private$params[[param_key]]
+        }
+      }
+      return(ret)
     },
 
     # Set categorical feature parameter
@@ -657,7 +673,6 @@ Dataset <- R6::R6Class(
     # Set predictor
     set_predictor = function(predictor) {
 
-      # Return self is identical predictor
       if (identical(private$predictor, predictor)) {
         return(invisible(self))
       }
@@ -690,11 +705,9 @@ Dataset <- R6::R6Class(
   )
 )
 
-#' Construct \code{lgb.Dataset} object
-#'
-#' Construct \code{lgb.Dataset} object from dense matrix, sparse matrix
-#' or local file (that was created previously by saving an \code{lgb.Dataset}).
-#'
+#' @title Construct \code{lgb.Dataset} object
+#' @description Construct \code{lgb.Dataset} object from dense matrix, sparse matrix
+#'              or local file (that was created previously by saving an \code{lgb.Dataset}).
 #' @param data a \code{matrix} object, a \code{dgCMatrix} object or a character representing a filename
 #' @param params a list of parameters
 #' @param reference reference dataset
@@ -707,14 +720,15 @@ Dataset <- R6::R6Class(
 #' @return constructed dataset
 #'
 #' @examples
-#' library(lightgbm)
+#' \dontrun{
 #' data(agaricus.train, package = "lightgbm")
 #' train <- agaricus.train
 #' dtrain <- lgb.Dataset(train$data, label = train$label)
-#' lgb.Dataset.save(dtrain, "lgb.Dataset.data")
-#' dtrain <- lgb.Dataset("lgb.Dataset.data")
+#' data_file <- tempfile(fileext = ".data")
+#' lgb.Dataset.save(dtrain, data_file)
+#' dtrain <- lgb.Dataset(data_file)
 #' lgb.Dataset.construct(dtrain)
-#'
+#' }
 #' @export
 lgb.Dataset <- function(data,
                         params = list(),
@@ -741,10 +755,9 @@ lgb.Dataset <- function(data,
 
 }
 
-#' Construct validation data
-#'
-#' Construct validation data according to training data
-#'
+#' @name lgb.Dataset.create.valid
+#' @title Construct validation data
+#' @description Construct validation data according to training data
 #' @param dataset \code{lgb.Dataset} object, training data
 #' @param data a \code{matrix} object, a \code{dgCMatrix} object or a character representing a filename
 #' @param info a list of information of the \code{lgb.Dataset} object
@@ -753,14 +766,14 @@ lgb.Dataset <- function(data,
 #' @return constructed dataset
 #'
 #' @examples
-#' library(lightgbm)
+#' \dontrun{
 #' data(agaricus.train, package = "lightgbm")
 #' train <- agaricus.train
 #' dtrain <- lgb.Dataset(train$data, label = train$label)
 #' data(agaricus.test, package = "lightgbm")
 #' test <- agaricus.test
 #' dtest <- lgb.Dataset.create.valid(dtrain, test$data, label = test$label)
-#'
+#' }
 #' @export
 lgb.Dataset.create.valid <- function(dataset, data, info = list(), ...) {
 
@@ -774,17 +787,18 @@ lgb.Dataset.create.valid <- function(dataset, data, info = list(), ...) {
 
 }
 
-#' Construct Dataset explicitly
-#'
+#' @name lgb.Dataset.construct
+#' @title Construct Dataset explicitly
+#' @description Construct Dataset explicitly
 #' @param dataset Object of class \code{lgb.Dataset}
 #'
 #' @examples
-#' library(lightgbm)
+#' \dontrun{
 #' data(agaricus.train, package = "lightgbm")
 #' train <- agaricus.train
 #' dtrain <- lgb.Dataset(train$data, label = train$label)
 #' lgb.Dataset.construct(dtrain)
-#'
+#' }
 #' @export
 lgb.Dataset.construct <- function(dataset) {
 
@@ -798,9 +812,8 @@ lgb.Dataset.construct <- function(dataset) {
 
 }
 
-#' Dimensions of an \code{lgb.Dataset}
-#'
-#' Returns a vector of numbers of rows and of columns in an \code{lgb.Dataset}.
+#' @title Dimensions of an \code{lgb.Dataset}
+#' @description Returns a vector of numbers of rows and of columns in an \code{lgb.Dataset}.
 #' @param x Object of class \code{lgb.Dataset}
 #' @param ... other parameters
 #'
@@ -811,7 +824,7 @@ lgb.Dataset.construct <- function(dataset) {
 #' be directly used with an \code{lgb.Dataset} object.
 #'
 #' @examples
-#' library(lightgbm)
+#' \dontrun{
 #' data(agaricus.train, package = "lightgbm")
 #' train <- agaricus.train
 #' dtrain <- lgb.Dataset(train$data, label = train$label)
@@ -819,7 +832,7 @@ lgb.Dataset.construct <- function(dataset) {
 #' stopifnot(nrow(dtrain) == nrow(train$data))
 #' stopifnot(ncol(dtrain) == ncol(train$data))
 #' stopifnot(all(dim(dtrain) == dim(train$data)))
-#'
+#' }
 #' @rdname dim
 #' @export
 dim.lgb.Dataset <- function(x, ...) {
@@ -829,16 +842,13 @@ dim.lgb.Dataset <- function(x, ...) {
     stop("dim.lgb.Dataset: input data should be an lgb.Dataset object")
   }
 
-  # Return dimensions
   x$dim()
 
 }
 
-#' Handling of column names of \code{lgb.Dataset}
-#'
-#' Only column names are supported for \code{lgb.Dataset}, thus setting of
-#' row names would have no effect and returned row names would be NULL.
-#'
+#' @title Handling of column names of \code{lgb.Dataset}
+#' @description Only column names are supported for \code{lgb.Dataset}, thus setting of
+#'              row names would have no effect and returned row names would be NULL.
 #' @param x object of class \code{lgb.Dataset}
 #' @param value a list of two elements: the first one is ignored
 #'              and the second one is column names
@@ -848,7 +858,7 @@ dim.lgb.Dataset <- function(x, ...) {
 #' Since row names are irrelevant, it is recommended to use \code{colnames} directly.
 #'
 #' @examples
-#' library(lightgbm)
+#' \dontrun{
 #' data(agaricus.train, package = "lightgbm")
 #' train <- agaricus.train
 #' dtrain <- lgb.Dataset(train$data, label = train$label)
@@ -857,7 +867,7 @@ dim.lgb.Dataset <- function(x, ...) {
 #' colnames(dtrain)
 #' colnames(dtrain) <- make.names(seq_len(ncol(train$data)))
 #' print(dtrain, verbose = TRUE)
-#'
+#' }
 #' @rdname dimnames.lgb.Dataset
 #' @export
 dimnames.lgb.Dataset <- function(x) {
@@ -877,7 +887,7 @@ dimnames.lgb.Dataset <- function(x) {
 `dimnames<-.lgb.Dataset` <- function(x, value) {
 
   # Check if invalid element list
-  if (!is.list(value) || length(value) != 2L) {
+  if (!identical(class(value), "list") || length(value) != 2L) {
     stop("invalid ", sQuote("value"), " given: must be a list of two elements")
   }
 
@@ -886,10 +896,8 @@ dimnames.lgb.Dataset <- function(x) {
     stop("lgb.Dataset does not have rownames")
   }
 
-  # Check for second value missing
   if (is.null(value[[2L]])) {
 
-    # No column names
     x$set_colnames(NULL)
     return(x)
 
@@ -912,18 +920,16 @@ dimnames.lgb.Dataset <- function(x) {
 
 }
 
-#' Slice a dataset
-#'
-#' Get a new \code{lgb.Dataset} containing the specified rows of
-#' original \code{lgb.Dataset} object
-#'
+#' @title Slice a dataset
+#' @description Get a new \code{lgb.Dataset} containing the specified rows of
+#'              original \code{lgb.Dataset} object
 #' @param dataset Object of class \code{lgb.Dataset}
 #' @param idxset an integer vector of indices of rows needed
 #' @param ... other parameters (currently not used)
 #' @return constructed sub dataset
 #'
 #' @examples
-#' library(lightgbm)
+#' \dontrun{
 #' data(agaricus.train, package = "lightgbm")
 #' train <- agaricus.train
 #' dtrain <- lgb.Dataset(train$data, label = train$label)
@@ -931,7 +937,7 @@ dimnames.lgb.Dataset <- function(x) {
 #' dsub <- lightgbm::slice(dtrain, seq_len(42L))
 #' lgb.Dataset.construct(dsub)
 #' labels <- lightgbm::getinfo(dsub, "label")
-#'
+#' }
 #' @export
 slice <- function(dataset, ...) {
   UseMethod("slice")
@@ -951,8 +957,9 @@ slice.lgb.Dataset <- function(dataset, idxset, ...) {
 
 }
 
-#' Get information of an \code{lgb.Dataset} object
-#'
+#' @name getinfo
+#' @title Get information of an \code{lgb.Dataset} object
+#' @description Get one attribute of a \code{lgb.Dataset}
 #' @param dataset Object of class \code{lgb.Dataset}
 #' @param name the name of the information field to get (see details)
 #' @param ... other parameters
@@ -969,7 +976,7 @@ slice.lgb.Dataset <- function(dataset, idxset, ...) {
 #' }
 #'
 #' @examples
-#' library(lightgbm)
+#' \dontrun{
 #' data(agaricus.train, package = "lightgbm")
 #' train <- agaricus.train
 #' dtrain <- lgb.Dataset(train$data, label = train$label)
@@ -980,7 +987,7 @@ slice.lgb.Dataset <- function(dataset, idxset, ...) {
 #'
 #' labels2 <- lightgbm::getinfo(dtrain, "label")
 #' stopifnot(all(labels2 == 1 - labels))
-#'
+#' }
 #' @export
 getinfo <- function(dataset, ...) {
   UseMethod("getinfo")
@@ -995,13 +1002,13 @@ getinfo.lgb.Dataset <- function(dataset, name, ...) {
     stop("getinfo.lgb.Dataset: input dataset should be an lgb.Dataset object")
   }
 
-  # Return information
   dataset$getinfo(name)
 
 }
 
-#' Set information of an \code{lgb.Dataset} object
-#'
+#' @name setinfo
+#' @title Set information of an \code{lgb.Dataset} object
+#' @description Set one attribute of a \code{lgb.Dataset}
 #' @param dataset Object of class \code{lgb.Dataset}
 #' @param name the name of the field to get
 #' @param info the specific field of information to set
@@ -1012,14 +1019,17 @@ getinfo.lgb.Dataset <- function(dataset, name, ...) {
 #' The \code{name} field can be one of the following:
 #'
 #' \itemize{
-#'     \item \code{label}: label lightgbm learn from ;
-#'     \item \code{weight}: to do a weight rescale ;
-#'     \item \code{init_score}: initial score is the base prediction lightgbm will boost from ;
-#'     \item \code{group}.
+#'     \item{\code{label}: vector of labels to use as the target variable}
+#'     \item{\code{weight}: to do a weight rescale}
+#'     \item{\code{init_score}: initial score is the base prediction lightgbm will boost from}
+#'     \item{\code{group}: used for learning-to-rank tasks. An integer vector describing how to
+#'         group rows together as ordered results from the same set of candidate results to be ranked.
+#'         For example, if you have a 1000-row dataset that contains 250 4-document query results,
+#'         set this to \code{rep(4L, 250L)}}
 #' }
 #'
 #' @examples
-#' library(lightgbm)
+#' \dontrun{
 #' data(agaricus.train, package = "lightgbm")
 #' train <- agaricus.train
 #' dtrain <- lgb.Dataset(train$data, label = train$label)
@@ -1030,7 +1040,7 @@ getinfo.lgb.Dataset <- function(dataset, name, ...) {
 #'
 #' labels2 <- lightgbm::getinfo(dtrain, "label")
 #' stopifnot(all.equal(labels2, 1 - labels))
-#'
+#' }
 #' @export
 setinfo <- function(dataset, ...) {
   UseMethod("setinfo")
@@ -1040,7 +1050,6 @@ setinfo <- function(dataset, ...) {
 #' @export
 setinfo.lgb.Dataset <- function(dataset, name, info, ...) {
 
-  # Check if dataset is not a dataset
   if (!lgb.is.Dataset(dataset)) {
     stop("setinfo.lgb.Dataset: input dataset should be an lgb.Dataset object")
   }
@@ -1049,27 +1058,30 @@ setinfo.lgb.Dataset <- function(dataset, name, info, ...) {
   invisible(dataset$setinfo(name, info))
 }
 
-#' Set categorical feature of \code{lgb.Dataset}
-#'
+#' @name lgb.Dataset.set.categorical
+#' @title Set categorical feature of \code{lgb.Dataset}
+#' @description Set the categorical features of an \code{lgb.Dataset} object. Use this function
+#'              to tell LightGBM which features should be treated as categorical.
 #' @param dataset object of class \code{lgb.Dataset}
-#' @param categorical_feature categorical features
-#'
+#' @param categorical_feature categorical features. This can either be a character vector of feature
+#'                            names or an integer vector with the indices of the features (e.g.
+#'                            \code{c(1L, 10L)} to say "the first and tenth columns").
 #' @return passed dataset
 #'
 #' @examples
-#' library(lightgbm)
+#' \dontrun{
 #' data(agaricus.train, package = "lightgbm")
 #' train <- agaricus.train
 #' dtrain <- lgb.Dataset(train$data, label = train$label)
-#' lgb.Dataset.save(dtrain, "lgb.Dataset.data")
-#' dtrain <- lgb.Dataset("lgb.Dataset.data")
+#' data_file <- tempfile(fileext = ".data")
+#' lgb.Dataset.save(dtrain, data_file)
+#' dtrain <- lgb.Dataset(data_file)
 #' lgb.Dataset.set.categorical(dtrain, 1L:2L)
-#'
+#' }
 #' @rdname lgb.Dataset.set.categorical
 #' @export
 lgb.Dataset.set.categorical <- function(dataset, categorical_feature) {
 
-  # Check if dataset is not a dataset
   if (!lgb.is.Dataset(dataset)) {
     stop("lgb.Dataset.set.categorical: input dataset should be an lgb.Dataset object")
   }
@@ -1079,17 +1091,16 @@ lgb.Dataset.set.categorical <- function(dataset, categorical_feature) {
 
 }
 
-#' Set reference of \code{lgb.Dataset}
-#'
-#' If you want to use validation data, you should set reference to training data
-#'
+#' @name lgb.Dataset.set.reference
+#' @title Set reference of \code{lgb.Dataset}
+#' @description If you want to use validation data, you should set reference to training data
 #' @param dataset object of class \code{lgb.Dataset}
 #' @param reference object of class \code{lgb.Dataset}
 #'
 #' @return passed dataset
 #'
 #' @examples
-#' library(lightgbm)
+#' \dontrun{
 #' data(agaricus.train, package ="lightgbm")
 #' train <- agaricus.train
 #' dtrain <- lgb.Dataset(train$data, label = train$label)
@@ -1097,7 +1108,7 @@ lgb.Dataset.set.categorical <- function(dataset, categorical_feature) {
 #' test <- agaricus.test
 #' dtest <- lgb.Dataset(test$data, test = train$label)
 #' lgb.Dataset.set.reference(dtest, dtrain)
-#'
+#' }
 #' @rdname lgb.Dataset.set.reference
 #' @export
 lgb.Dataset.set.reference <- function(dataset, reference) {
@@ -1111,24 +1122,22 @@ lgb.Dataset.set.reference <- function(dataset, reference) {
   invisible(dataset$set_reference(reference))
 }
 
-#' Save \code{lgb.Dataset} to a binary file
-#'
-#' Please note that \code{init_score} is not saved in binary file.
-#' If you need it, please set it again after loading Dataset.
-#'
+#' @name lgb.Dataset.save
+#' @title Save \code{lgb.Dataset} to a binary file
+#' @description Please note that \code{init_score} is not saved in binary file.
+#'              If you need it, please set it again after loading Dataset.
 #' @param dataset object of class \code{lgb.Dataset}
 #' @param fname object filename of output file
 #'
 #' @return passed dataset
 #'
 #' @examples
-#' library(lightgbm)
+#' \dontrun{
 #' data(agaricus.train, package = "lightgbm")
 #' train <- agaricus.train
 #' dtrain <- lgb.Dataset(train$data, label = train$label)
-#' lgb.Dataset.save(dtrain, "data.bin")
-#'
-#' @rdname lgb.Dataset.save
+#' lgb.Dataset.save(dtrain, tempfile(fileext = ".bin"))
+#' }
 #' @export
 lgb.Dataset.save <- function(dataset, fname) {
 

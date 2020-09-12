@@ -17,17 +17,13 @@ CVBooster <- R6::R6Class(
   )
 )
 
+#' @name lgb.cv
 #' @title Main CV logic for LightGBM
 #' @description Cross validation logic used by LightGBM
-#' @name lgb.cv
 #' @inheritParams lgb_shared_params
 #' @param nfold the original dataset is randomly partitioned into \code{nfold} equal size subsamples.
-#' @param label vector of response values. Should be provided only when data is an R-matrix.
+#' @param label Vector of labels, used if \code{data} is not an \code{\link{lgb.Dataset}}
 #' @param weight vector of response values. If not NULL, will set to dataset
-#' @param obj objective function, can be character or custom objective function. Examples include
-#'            \code{regression}, \code{regression_l1}, \code{huber},
-#'             \code{binary}, \code{lambdarank}, \code{multiclass}, \code{multiclass}
-#' @param eval evaluation function, can be (list of) character or custom eval function
 #' @param record Boolean, TRUE will record iteration message to \code{booster$record_evals}
 #' @param showsd \code{boolean}, whether to show standard deviation of cross validation
 #' @param stratified a \code{boolean} indicating whether sampling of folds should be stratified
@@ -36,27 +32,27 @@ CVBooster <- R6::R6Class(
 #'              (each element must be a vector of test fold's indices). When folds are supplied,
 #'              the \code{nfold} and \code{stratified} parameters are ignored.
 #' @param colnames feature names, if not null, will use this to overwrite the names in dataset
-#' @param categorical_feature list of str or int
-#'                            type int represents index,
-#'                            type str represents feature names
+#' @param categorical_feature categorical features. This can either be a character vector of feature
+#'                            names or an integer vector with the indices of the features (e.g.
+#'                            \code{c(1L, 10L)} to say "the first and tenth columns").
 #' @param callbacks List of callback functions that are applied at each iteration.
 #' @param reset_data Boolean, setting it to TRUE (not the default value) will transform the booster model
 #'                   into a predictor model which frees up memory and the original datasets
 #' @param ... other parameters, see Parameters.rst for more information. A few key parameters:
 #'            \itemize{
-#'                \item{boosting}{Boosting type. \code{"gbdt"} or \code{"dart"}}
-#'                \item{num_leaves}{number of leaves in one tree. defaults to 127}
-#'                \item{max_depth}{Limit the max depth for tree model. This is used to deal with
+#'                \item{\code{boosting}: Boosting type. \code{"gbdt"}, \code{"rf"}, \code{"dart"} or \code{"goss"}.}
+#'                \item{\code{num_leaves}: Maximum number of leaves in one tree.}
+#'                \item{\code{max_depth}: Limit the max depth for tree model. This is used to deal with
 #'                                 overfit when #data is small. Tree still grow by leaf-wise.}
-#'                \item{num_threads}{Number of threads for LightGBM. For the best speed, set this to
+#'                \item{\code{num_threads}: Number of threads for LightGBM. For the best speed, set this to
 #'                                   the number of real CPU cores, not the number of threads (most
 #'                                   CPU using hyper-threading to generate 2 threads per CPU core).}
 #'            }
-#'
+#' @inheritSection lgb_shared_params Early Stopping
 #' @return a trained model \code{lgb.CVBooster}.
 #'
 #' @examples
-#' library(lightgbm)
+#' \dontrun{
 #' data(agaricus.train, package = "lightgbm")
 #' train <- agaricus.train
 #' dtrain <- lgb.Dataset(train$data, label = train$label)
@@ -64,12 +60,12 @@ CVBooster <- R6::R6Class(
 #' model <- lgb.cv(
 #'   params = params
 #'   , data = dtrain
-#'   , nrounds = 10L
+#'   , nrounds = 5L
 #'   , nfold = 3L
 #'   , min_data = 1L
 #'   , learning_rate = 1.0
-#'   , early_stopping_rounds = 5L
 #' )
+#' }
 #' @importFrom data.table data.table setorderv
 #' @export
 lgb.cv <- function(params = list()
@@ -95,17 +91,25 @@ lgb.cv <- function(params = list()
                    , ...
                    ) {
 
+  if (nrounds <= 0L) {
+    stop("nrounds should be greater than zero")
+  }
+
+  # If 'data' is not an lgb.Dataset, try to construct one using 'label'
+  if (!lgb.is.Dataset(data)) {
+    if (is.null(label)) {
+      stop("'label' must be provided for lgb.cv if 'data' is not an 'lgb.Dataset'")
+    }
+    data <- lgb.Dataset(data, label = label)
+  }
+
   # Setup temporary variables
   params <- append(params, list(...))
   params$verbose <- verbose
   params <- lgb.check.obj(params, obj)
   params <- lgb.check.eval(params, eval)
   fobj <- NULL
-  feval <- NULL
-
-  if (nrounds <= 0L) {
-    stop("nrounds should be greater than zero")
-  }
+  eval_functions <- list(NULL)
 
   # Check for objective (function or not)
   if (is.function(params$objective)) {
@@ -113,9 +117,18 @@ lgb.cv <- function(params = list()
     params$objective <- "NONE"
   }
 
-  # Check for loss (function or not)
+  # If eval is a single function, store it as a 1-element list
+  # (for backwards compatibility). If it is a list of functions, store
+  # all of them. This makes it possible to pass any mix of strings like "auc"
+  # and custom functions to eval
   if (is.function(eval)) {
-    feval <- eval
+    eval_functions <- list(eval)
+  }
+  if (methods::is(eval, "list")) {
+    eval_functions <- Filter(
+      f = is.function
+      , x = eval
+    )
   }
 
   # Init predictor to empty
@@ -141,13 +154,14 @@ lgb.cv <- function(params = list()
     end_iteration <- begin_iteration + nrounds - 1L
   }
 
-  # Check for training dataset type correctness
-  if (!lgb.is.Dataset(data)) {
-    if (is.null(label)) {
-      stop("Labels must be provided for lgb.cv")
-    }
-    data <- lgb.Dataset(data, label = label)
+  # Check interaction constraints
+  cnames <- NULL
+  if (!is.null(colnames)) {
+    cnames <- colnames
+  } else if (!is.null(data$get_colnames())) {
+    cnames <- data$get_colnames()
   }
+  params[["interaction_constraints"]] <- lgb.check_interaction_constraints(params, cnames)
 
   # Check for weights
   if (!is.null(weight)) {
@@ -177,7 +191,7 @@ lgb.cv <- function(params = list()
   if (!is.null(folds)) {
 
     # Check for list of folds or for single value
-    if (!is.list(folds) || length(folds) < 2L) {
+    if (!identical(class(folds), "list") || length(folds) < 2L) {
       stop(sQuote("folds"), " must be a list with 2 or more elements that are vectors of indices for each CV-fold")
     }
 
@@ -224,7 +238,7 @@ lgb.cv <- function(params = list()
   }
 
   # Did user pass parameters that indicate they want to use early stopping?
-  using_early_stopping_via_args <- !is.null(early_stopping_rounds)
+  using_early_stopping_via_args <- !is.null(early_stopping_rounds) && early_stopping_rounds > 0L
 
   boosting_param_names <- .PARAMETER_ALIASES()[["boosting"]]
   using_dart <- any(
@@ -256,12 +270,12 @@ lgb.cv <- function(params = list()
       callbacks
       , cb.early.stop(
         stopping_rounds = early_stopping_rounds
+        , first_metric_only = isTRUE(params[["first_metric_only"]])
         , verbose = verbose
       )
     )
   }
 
-  # Categorize callbacks
   cb <- categorize.callbacks(callbacks)
 
   # Construct booster for each fold. The data.table() code below is used to
@@ -339,7 +353,6 @@ lgb.cv <- function(params = list()
     env$iteration <- i
     env$eval_list <- list()
 
-    # Loop through "pre_iter" element
     for (f in cb$pre_iter) {
       f(env)
     }
@@ -347,7 +360,11 @@ lgb.cv <- function(params = list()
     # Update one boosting iteration
     msg <- lapply(cv_booster$boosters, function(fd) {
       fd$booster$update(fobj = fobj)
-      fd$booster$eval_valid(feval = feval)
+      out <- list()
+      for (eval_function in eval_functions) {
+        out <- append(out, fd$booster$eval_valid(feval = eval_function))
+      }
+      return(out)
     })
 
     # Prepare collection of evaluation results
@@ -371,14 +388,28 @@ lgb.cv <- function(params = list()
 
   }
 
+  # When early stopping is not activated, we compute the best iteration / score ourselves
+  # based on the first first metric
   if (record && is.na(env$best_score)) {
-    if (env$eval_list[[1L]]$higher_better[1L] == TRUE) {
-      cv_booster$best_iter <- unname(which.max(unlist(cv_booster$record_evals[[2L]][[1L]][[1L]])))
-      cv_booster$best_score <- cv_booster$record_evals[[2L]][[1L]][[1L]][[cv_booster$best_iter]]
+    # when using a custom eval function, the metric name is returned from the
+    # function, so figure it out from record_evals
+    if (!is.null(eval_functions[1L])) {
+      first_metric <- names(cv_booster$record_evals[["valid"]])[1L]
     } else {
-      cv_booster$best_iter <- unname(which.min(unlist(cv_booster$record_evals[[2L]][[1L]][[1L]])))
-      cv_booster$best_score <- cv_booster$record_evals[[2L]][[1L]][[1L]][[cv_booster$best_iter]]
+      first_metric <- cv_booster$.__enclos_env__$private$eval_names[1L]
     }
+    .find_best <- which.min
+    if (isTRUE(env$eval_list[[1L]]$higher_better[1L])) {
+      .find_best <- which.max
+    }
+    cv_booster$best_iter <- unname(
+      .find_best(
+        unlist(
+          cv_booster$record_evals[["valid"]][[first_metric]][[.EVAL_KEY()]]
+        )
+      )
+    )
+    cv_booster$best_score <- cv_booster$record_evals[["valid"]][[first_metric]][[.EVAL_KEY()]][[cv_booster$best_iter]]
   }
 
   if (reset_data) {
@@ -397,7 +428,6 @@ lgb.cv <- function(params = list()
     })
   }
 
-  # Return booster
   return(cv_booster)
 
 }
@@ -460,7 +490,6 @@ generate.cv.folds <- function(nfold, nrows, stratified, label, group, params) {
 
   }
 
-  # Return folds
   return(folds)
 
 }
@@ -531,7 +560,6 @@ lgb.stratified.folds <- function(y, k = 10L) {
 
   }
 
-  # Return data
   out <- split(seq(along = y), foldVector)
   names(out) <- NULL
   out
@@ -558,7 +586,8 @@ lgb.merge.cv.result <- function(msg, showsd = TRUE) {
       msg[[i]][[j]]$value }))
   })
 
-  # Get evaluation
+  # Get evaluation. Just taking the first element here to
+  # get structure (name, higher_better, data_name)
   ret_eval <- msg[[1L]]
 
   # Go through evaluation length items
@@ -566,7 +595,6 @@ lgb.merge.cv.result <- function(msg, showsd = TRUE) {
     ret_eval[[j]]$value <- mean(eval_result[[j]])
   }
 
-  # Preinit evaluation error
   ret_eval_err <- NULL
 
   # Check for standard deviation

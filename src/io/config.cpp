@@ -20,9 +20,6 @@ void Config::KV2Map(std::unordered_map<std::string, std::string>* params, const 
     if (tmp_strs.size() == 2) {
       value = Common::RemoveQuotationSymbol(Common::Trim(tmp_strs[1]));
     }
-    if (!Common::CheckASCII(key) || !Common::CheckASCII(value)) {
-      Log::Fatal("Do not support non-ASCII characters in config.");
-    }
     if (key.size() > 0) {
       auto value_search = params->find(key);
       if (value_search == params->end()) {  // not set
@@ -183,6 +180,14 @@ void Config::GetAucMuWeights() {
   }
 }
 
+void Config::GetInteractionConstraints() {
+  if (interaction_constraints == "") {
+    interaction_constraints_vector = std::vector<std::vector<int>>();
+  } else {
+    interaction_constraints_vector = Common::StringToArrayofArrays<int>(interaction_constraints, '[', ']', ',');
+  }
+}
+
 void Config::Set(const std::unordered_map<std::string, std::string>& params) {
   // generate seeds by seed.
   if (GetInt(params, "seed", &seed)) {
@@ -192,6 +197,8 @@ void Config::Set(const std::unordered_map<std::string, std::string>& params) {
     bagging_seed = static_cast<int>(rand.NextShort(0, int_max));
     drop_seed = static_cast<int>(rand.NextShort(0, int_max));
     feature_fraction_seed = static_cast<int>(rand.NextShort(0, int_max));
+    objective_seed = static_cast<int>(rand.NextShort(0, int_max));
+    extra_seed = static_cast<int>(rand.NextShort(0, int_max));
   }
 
   GetTaskType(params, &task);
@@ -205,26 +212,21 @@ void Config::Set(const std::unordered_map<std::string, std::string>& params) {
 
   GetAucMuWeights();
 
+  GetInteractionConstraints();
+
   // sort eval_at
   std::sort(eval_at.begin(), eval_at.end());
 
-  if (valid_data_initscores.size() == 0 && valid.size() > 0) {
-    valid_data_initscores = std::vector<std::string>(valid.size(), "");
-  }
-  CHECK(valid.size() == valid_data_initscores.size());
-
-  if (valid_data_initscores.empty()) {
-    std::vector<std::string> new_valid;
-    for (size_t i = 0; i < valid.size(); ++i) {
-      if (valid[i] != data) {
-        // Only push the non-training data
-        new_valid.push_back(valid[i]);
-      } else {
-        is_provide_training_metric = true;
-      }
+  std::vector<std::string> new_valid;
+  for (size_t i = 0; i < valid.size(); ++i) {
+    if (valid[i] != data) {
+      // Only push the non-training data
+      new_valid.push_back(valid[i]);
+    } else {
+      is_provide_training_metric = true;
     }
-    valid = new_valid;
   }
+  valid = new_valid;
 
   // check for conflicts
   CheckParamConflict();
@@ -285,10 +287,10 @@ void Config::CheckParamConflict() {
   }
 
   if (is_single_tree_learner || tree_learner == std::string("feature")) {
-    is_parallel_find_bin = false;
+    is_data_based_parallel = false;
   } else if (tree_learner == std::string("data")
              || tree_learner == std::string("voting")) {
-    is_parallel_find_bin = true;
+    is_data_based_parallel = true;
     if (histogram_pool_size >= 0
         && tree_learner == std::string("data")) {
       Log::Warning("Histogram LRU queue was enabled (histogram_pool_size=%f).\n"
@@ -296,6 +298,12 @@ void Config::CheckParamConflict() {
                    histogram_pool_size);
       // Change pool size to -1 (no limit) when using data parallel to reduce communication costs
       histogram_pool_size = -1;
+    }
+  }
+  if (is_data_based_parallel) {
+    if (!forcedsplits_filename.empty()) {
+      Log::Fatal("Don't support forcedsplits in %s tree learner",
+                 tree_learner.c_str());
     }
   }
   // Check max_depth and num_leaves
@@ -310,6 +318,33 @@ void Config::CheckParamConflict() {
       // Fits in an int, and is more restrictive than the current num_leaves
       num_leaves = static_cast<int>(full_num_leaves);
     }
+  }
+  // force col-wise for gpu
+  if (device_type == std::string("gpu")) {
+    force_col_wise = true;
+    force_row_wise = false;
+  }
+  // min_data_in_leaf must be at least 2 if path smoothing is active. This is because when the split is calculated
+  // the count is calculated using the proportion of hessian in the leaf which is rounded up to nearest int, so it can
+  // be 1 when there is actually no data in the leaf. In rare cases this can cause a bug because with path smoothing the
+  // calculated split gain can be positive even with zero gradient and hessian.
+  if (path_smooth > kEpsilon && min_data_in_leaf < 2) {
+    min_data_in_leaf = 2;
+    Log::Warning("min_data_in_leaf has been increased to 2 because this is required when path smoothing is active.");
+  }
+  if (is_parallel && monotone_constraints_method == std::string("intermediate")) {
+    // In distributed mode, local node doesn't have histograms on all features, cannot perform "intermediate" monotone constraints.
+    Log::Warning("Cannot use \"intermediate\" monotone constraints in parallel learning, auto set to \"basic\" method.");
+    monotone_constraints_method = "basic";
+  }
+  if (feature_fraction_bynode != 1.0 && monotone_constraints_method == std::string("intermediate")) {
+    // "intermediate" monotone constraints need to recompute splits. If the features are sampled when computing the
+    // split initially, then the sampling needs to be recorded or done once again, which is currently not supported
+    Log::Warning("Cannot use \"intermediate\" monotone constraints with feature fraction different from 1, auto set monotone constraints to \"basic\" method.");
+    monotone_constraints_method = "basic";
+  }
+  if (max_depth > 0 && monotone_penalty >= max_depth) {
+    Log::Warning("Monotone penalty greater than tree depth. Monotone features won't be used.");
   }
 }
 

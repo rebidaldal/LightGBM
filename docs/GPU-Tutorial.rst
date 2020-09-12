@@ -1,4 +1,4 @@
-﻿LightGBM GPU Tutorial
+LightGBM GPU Tutorial
 =====================
 
 The purpose of this document is to give you a quick step-by-step tutorial on GPU training.
@@ -78,7 +78,7 @@ If you want to use the Python interface of LightGBM, you can install it now (alo
 ::
 
     sudo apt-get -y install python-pip
-    sudo -H pip install setuptools numpy scipy "scikit-learn<=0.21.3" -U
+    sudo -H pip install setuptools numpy scipy scikit-learn -U
     cd python-package/
     sudo python setup.py install --precompile
     cd ..
@@ -118,7 +118,6 @@ Now we create a configuration file for LightGBM by running the following command
     min_data_in_leaf = 1
     min_sum_hessian_in_leaf = 100
     ndcg_eval_at = 1,3,5,10
-    sparse_threshold = 1.0
     device = gpu
     gpu_platform_id = 0
     gpu_device_id = 0

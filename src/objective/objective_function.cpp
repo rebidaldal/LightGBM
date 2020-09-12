@@ -29,6 +29,8 @@ ObjectiveFunction* ObjectiveFunction::CreateObjectiveFunction(const std::string&
     return new BinaryLogloss(config);
   } else if (type == std::string("lambdarank")) {
     return new LambdarankNDCG(config);
+  } else if (type == std::string("rank_xendcg")) {
+    return new RankXENDCG(config);
   } else if (type == std::string("multiclass")) {
     return new MulticlassSoftmax(config);
   } else if (type == std::string("multiclassova")) {
@@ -47,6 +49,7 @@ ObjectiveFunction* ObjectiveFunction::CreateObjectiveFunction(const std::string&
     return nullptr;
   }
   Log::Fatal("Unknown objective type name: %s", type.c_str());
+  return nullptr;
 }
 
 ObjectiveFunction* ObjectiveFunction::CreateObjectiveFunction(const std::string& str) {
@@ -68,6 +71,8 @@ ObjectiveFunction* ObjectiveFunction::CreateObjectiveFunction(const std::string&
     return new BinaryLogloss(strs);
   } else if (type == std::string("lambdarank")) {
     return new LambdarankNDCG(strs);
+  } else if (type == std::string("rank_xendcg")) {
+    return new RankXENDCG(strs);
   } else if (type == std::string("multiclass")) {
     return new MulticlassSoftmax(strs);
   } else if (type == std::string("multiclassova")) {
@@ -86,6 +91,7 @@ ObjectiveFunction* ObjectiveFunction::CreateObjectiveFunction(const std::string&
     return nullptr;
   }
   Log::Fatal("Unknown objective type name: %s", type.c_str());
+  return nullptr;
 }
 
 }  // namespace LightGBM

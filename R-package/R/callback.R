@@ -1,3 +1,11 @@
+# constants that control naming in lists
+.EVAL_KEY <- function() {
+  return("eval")
+}
+.EVAL_ERR_KEY <- function() {
+  return("eval_err")
+}
+
 #' @importFrom R6 R6Class
 CB_ENV <- R6::R6Class(
   "lgb.cb_env",
@@ -17,8 +25,7 @@ CB_ENV <- R6::R6Class(
 
 cb.reset.parameters <- function(new_params) {
 
-  # Check for parameter list
-  if (!is.list(new_params)) {
+  if (!identical(class(new_params), "list")) {
     stop(sQuote("new_params"), " must be a list")
   }
 
@@ -29,26 +36,13 @@ cb.reset.parameters <- function(new_params) {
   # Run some checks in the beginning
   init <- function(env) {
 
+    # Check for model environment
+    if (is.null(env$model)) {
+      stop("Env should have a ", sQuote("model"))
+    }
+
     # Store boosting rounds
     nrounds <<- env$end_iteration - env$begin_iteration + 1L
-
-    # Check for model environment
-    if (is.null(env$model)) { stop("Env should have a ", sQuote("model")) }
-
-    # Some parameters are not allowed to be changed,
-    # since changing them would simply wreck some chaos
-    not_allowed <- c(
-      .PARAMETER_ALIASES()[["num_class"]]
-      , .PARAMETER_ALIASES()[["metric"]]
-      , .PARAMETER_ALIASES()[["boosting"]]
-    )
-    if (any(pnames %in% not_allowed)) {
-      stop(
-        "Parameters "
-        , paste0(pnames[pnames %in% not_allowed], collapse = ", ")
-        , " cannot be changed during boosting"
-      )
-    }
 
     # Check parameter names
     for (n in pnames) {
@@ -156,7 +150,6 @@ merge.eval.string <- function(env) {
 
   }
 
-  # Return tabulated separated message
   paste0(msg, collapse = "\t")
 
 }
@@ -193,7 +186,6 @@ cb.print.evaluation <- function(period = 1L) {
   attr(callback, "call") <- match.call()
   attr(callback, "name") <- "cb.print.evaluation"
 
-  # Return callback
   callback
 
 }
@@ -203,7 +195,6 @@ cb.record.evaluation <- function() {
   # Create callback
   callback <- function(env) {
 
-    # Return empty if empty evaluation list
     if (length(env$eval_list) <= 0L) {
       return()
     }
@@ -229,8 +220,8 @@ cb.record.evaluation <- function() {
 
         # Create dummy lists
         env$model$record_evals[[data_name]][[name]] <- list()
-        env$model$record_evals[[data_name]][[name]]$eval <- list()
-        env$model$record_evals[[data_name]][[name]]$eval_err <- list()
+        env$model$record_evals[[data_name]][[name]][[.EVAL_KEY()]] <- list()
+        env$model$record_evals[[data_name]][[name]][[.EVAL_ERR_KEY()]] <- list()
 
       }
 
@@ -251,12 +242,12 @@ cb.record.evaluation <- function() {
       name <- eval_res$name
 
       # Store evaluation data
-      env$model$record_evals[[data_name]][[name]]$eval <- c(
-        env$model$record_evals[[data_name]][[name]]$eval
+      env$model$record_evals[[data_name]][[name]][[.EVAL_KEY()]] <- c(
+        env$model$record_evals[[data_name]][[name]][[.EVAL_KEY()]]
         , eval_res$value
       )
-      env$model$record_evals[[data_name]][[name]]$eval_err <- c(
-        env$model$record_evals[[data_name]][[name]]$eval_err
+      env$model$record_evals[[data_name]][[name]][[.EVAL_ERR_KEY()]] <- c(
+        env$model$record_evals[[data_name]][[name]][[.EVAL_ERR_KEY()]]
         , eval_err
       )
 
@@ -268,14 +259,12 @@ cb.record.evaluation <- function() {
   attr(callback, "call") <- match.call()
   attr(callback, "name") <- "cb.record.evaluation"
 
-  # Return callback
   callback
 
 }
 
-cb.early.stop <- function(stopping_rounds, verbose = TRUE) {
+cb.early.stop <- function(stopping_rounds, first_metric_only = FALSE, verbose = TRUE) {
 
-  # Initialize variables
   factor_to_bigger_better <- NULL
   best_iter <- NULL
   best_score <- NULL
@@ -285,20 +274,20 @@ cb.early.stop <- function(stopping_rounds, verbose = TRUE) {
   # Initialization function
   init <- function(env) {
 
-    # Store evaluation length
-    eval_len <<- length(env$eval_list)
-
     # Early stopping cannot work without metrics
-    if (eval_len == 0L) {
+    if (length(env$eval_list) == 0L) {
       stop("For early stopping, valids must have at least one element")
     }
+
+    # Store evaluation length
+    eval_len <<- length(env$eval_list)
 
     # Check if verbose or not
     if (isTRUE(verbose)) {
       cat("Will train until there is no improvement in ", stopping_rounds, " rounds.\n\n", sep = "")
     }
 
-    # Maximization or minimization task
+    # Internally treat everything as a maximization task
     factor_to_bigger_better <<- rep.int(1.0, eval_len)
     best_iter <<- rep.int(-1L, eval_len)
     best_score <<- rep.int(-Inf, eval_len)
@@ -310,8 +299,8 @@ cb.early.stop <- function(stopping_rounds, verbose = TRUE) {
       # Prepend message
       best_msg <<- c(best_msg, "")
 
-      # Check if maximization or minimization
-      if (!env$eval_list[[i]]$higher_better) {
+      # Internally treat everything as a maximization task
+      if (!isTRUE(env$eval_list[[i]]$higher_better)) {
         factor_to_bigger_better[i] <<- -1.0
       }
 
@@ -330,8 +319,16 @@ cb.early.stop <- function(stopping_rounds, verbose = TRUE) {
     # Store iteration
     cur_iter <- env$iteration
 
+    # By default, any metric can trigger early stopping. This can be disabled
+    # with 'first_metric_only = TRUE'
+    if (isTRUE(first_metric_only)) {
+      evals_to_check <- 1L
+    } else {
+      evals_to_check <- seq_len(eval_len)
+    }
+
     # Loop through evaluation
-    for (i in seq_len(eval_len)) {
+    for (i in evals_to_check) {
 
       # Store score
       score <- env$eval_list[[i]]$value * factor_to_bigger_better[i]
@@ -394,11 +391,9 @@ cb.early.stop <- function(stopping_rounds, verbose = TRUE) {
     }
   }
 
-  # Set attributes
   attr(callback, "call") <- match.call()
   attr(callback, "name") <- "cb.early.stop"
 
-  # Return callback
   callback
 
 }

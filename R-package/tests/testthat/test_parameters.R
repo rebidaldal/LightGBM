@@ -19,11 +19,12 @@ test_that("Feature penalties work properly", {
       , label = train$label
       , num_leaves = 5L
       , learning_rate = 0.05
-      , nrounds = 20L
+      , nrounds = 5L
       , objective = "binary"
       , feature_penalty = paste0(feature_penalties, collapse = ",")
       , metric = "binary_error"
       , verbose = -1L
+      , save_name = tempfile(fileext = ".model")
     )
   })
 
@@ -44,15 +45,19 @@ test_that("Feature penalties work properly", {
   expect_length(var_gain[[length(var_gain)]], 0L)
 })
 
-test_that(".PARAMETER_ALIASES() returns a named list", {
+context("parameter aliases")
+
+test_that(".PARAMETER_ALIASES() returns a named list of character vectors, where names are unique", {
   param_aliases <- .PARAMETER_ALIASES()
-  expect_true(is.list(param_aliases))
+  expect_identical(class(param_aliases), "list")
   expect_true(is.character(names(param_aliases)))
   expect_true(is.character(param_aliases[["boosting"]]))
   expect_true(is.character(param_aliases[["early_stopping_round"]]))
-  expect_true(is.character(param_aliases[["metric"]]))
-  expect_true(is.character(param_aliases[["num_class"]]))
   expect_true(is.character(param_aliases[["num_iterations"]]))
+  expect_true(is.character(param_aliases[["pre_partition"]]))
+  expect_true(length(names(param_aliases)) == length(param_aliases))
+  expect_true(all(sapply(param_aliases, is.character)))
+  expect_true(length(unique(names(param_aliases))) == length(param_aliases))
 })
 
 test_that("training should warn if you use 'dart' boosting, specified with 'boosting' or aliases", {
@@ -71,6 +76,7 @@ test_that("training should warn if you use 'dart' boosting, specified with 'boos
           object = "dart"
           , nm = boosting_param
         )
+        , save_name = tempfile(fileext = ".model")
       )
     }, regexp = "Early stopping is not available in 'dart' mode")
   }

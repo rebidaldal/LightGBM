@@ -38,10 +38,11 @@ compression to be used. Ignored if file is a connection.}
 NULL invisibly.
 }
 \description{
-Attempts to save a model using RDS. Has an additional parameter (\code{raw}) which decides
-whether to save the raw model or not.
+Attempts to save a model using RDS. Has an additional parameter (\code{raw})
+             which decides whether to save the raw model or not.
 }
 \examples{
+\dontrun{
 library(lightgbm)
 data(agaricus.train, package = "lightgbm")
 train <- agaricus.train
@@ -60,5 +61,7 @@ model <- lgb.train(
     , learning_rate = 1.0
     , early_stopping_rounds = 5L
 )
-saveRDS.lgb.Booster(model, "model.rds")
+model_file <- tempfile(fileext = ".rds")
+saveRDS.lgb.Booster(model, model_file)
+}
 }

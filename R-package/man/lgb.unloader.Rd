@@ -2,7 +2,7 @@
 % Please edit documentation in R/lgb.unloader.R
 \name{lgb.unloader}
 \alias{lgb.unloader}
-\title{LightGBM unloading error fix}
+\title{Remove lightgbm and its objects from an environment}
 \usage{
 lgb.unloader(restore = TRUE, wipe = FALSE, envir = .GlobalEnv)
 }
@@ -21,12 +21,12 @@ environment. Defaults to \code{FALSE} which means to not remove them.}
 NULL invisibly.
 }
 \description{
-Attempts to unload LightGBM packages so you can remove objects cleanly without having to restart R.
-This is useful for instance if an object becomes stuck for no apparent reason and you do not want
-to restart R to fix the lost object.
+Attempts to unload LightGBM packages so you can remove objects cleanly without
+             having to restart R. This is useful for instance if an object becomes stuck for no
+             apparent reason and you do not want to restart R to fix the lost object.
 }
 \examples{
-library(lightgbm)
+\dontrun{
 data(agaricus.train, package = "lightgbm")
 train <- agaricus.train
 dtrain <- lgb.Dataset(train$data, label = train$label)
@@ -38,14 +38,12 @@ valids <- list(test = dtest)
 model <- lgb.train(
   params = params
   , data = dtrain
-  , nrounds = 10L
+  , nrounds = 5L
   , valids = valids
   , min_data = 1L
   , learning_rate = 1.0
-  , early_stopping_rounds = 5L
 )
 
-\dontrun{
 lgb.unloader(restore = FALSE, wipe = FALSE, envir = .GlobalEnv)
 rm(model, dtrain, dtest) # Not needed if wipe = TRUE
 gc() # Not needed if wipe = TRUE
@@ -53,5 +51,4 @@ gc() # Not needed if wipe = TRUE
 library(lightgbm)
 # Do whatever you want again with LightGBM without object clashing
 }
-
 }

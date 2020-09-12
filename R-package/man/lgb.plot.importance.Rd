@@ -21,7 +21,9 @@ lgb.plot.importance(
 
 \item{left_margin}{(base R barplot) allows to adjust the left margin size to fit feature names.}
 
-\item{cex}{(base R barplot) passed as \code{cex.names} parameter to \code{barplot}.}
+\item{cex}{(base R barplot) passed as \code{cex.names} parameter to \code{\link[graphics]{barplot}}.
+Set a number smaller than 1.0 to make the bar labels smaller than R's default and values
+greater than 1.0 to make them larger.}
 }
 \value{
 The \code{lgb.plot.importance} function creates a \code{barplot}
@@ -35,21 +37,25 @@ The graph represents each feature as a horizontal bar of length proportional to 
 Features are shown ranked in a decreasing importance order.
 }
 \examples{
+\dontrun{
 data(agaricus.train, package = "lightgbm")
 train <- agaricus.train
 dtrain <- lgb.Dataset(train$data, label = train$label)
 
 params <- list(
     objective = "binary"
-    , learning_rate = 0.01
-    , num_leaves = 63L
-    , max_depth = -1L
+    , learning_rate = 0.1
     , min_data_in_leaf = 1L
     , min_sum_hessian_in_leaf = 1.0
 )
 
-model <- lgb.train(params, dtrain, 10)
+model <- lgb.train(
+    params = params
+    , data = dtrain
+    , nrounds = 5L
+)
 
 tree_imp <- lgb.importance(model, percentage = TRUE)
-lgb.plot.importance(tree_imp, top_n = 10L, measure = "Gain")
+lgb.plot.importance(tree_imp, top_n = 5L, measure = "Gain")
+}
 }

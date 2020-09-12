@@ -6,6 +6,7 @@
 %module lightgbmlib
 %ignore LGBM_BoosterSaveModelToString;
 %ignore LGBM_BoosterGetEvalNames;
+%ignore LGBM_BoosterGetFeatureNames;
 %{
 /* Includes the header in the wrapper code */
 #include "../include/LightGBM/export.h"
@@ -36,16 +37,17 @@
   char * LGBM_BoosterSaveModelToStringSWIG(BoosterHandle handle,
                                            int start_iteration,
                                            int num_iteration,
+                                           int feature_importance_type,
                                            int64_t buffer_len,
                                            int64_t* out_len) {
     char* dst = new char[buffer_len];
-    int result = LGBM_BoosterSaveModelToString(handle, start_iteration, num_iteration, buffer_len, out_len, dst);
+    int result = LGBM_BoosterSaveModelToString(handle, start_iteration, num_iteration, feature_importance_type, buffer_len, out_len, dst);
     // Reallocate to use larger length
     if (*out_len > buffer_len) {
       delete [] dst;
       int64_t realloc_len = *out_len;
       dst = new char[realloc_len];
-      result = LGBM_BoosterSaveModelToString(handle, start_iteration, num_iteration, realloc_len, out_len, dst);
+      result = LGBM_BoosterSaveModelToString(handle, start_iteration, num_iteration, feature_importance_type, realloc_len, out_len, dst);
     }
     if (result != 0) {
       return nullptr;
@@ -56,30 +58,18 @@
   char * LGBM_BoosterDumpModelSWIG(BoosterHandle handle,
                                    int start_iteration,
                                    int num_iteration,
+                                   int feature_importance_type,
                                    int64_t buffer_len,
                                    int64_t* out_len) {
     char* dst = new char[buffer_len];
-    int result = LGBM_BoosterDumpModel(handle, start_iteration, num_iteration, buffer_len, out_len, dst);
+    int result = LGBM_BoosterDumpModel(handle, start_iteration, num_iteration, feature_importance_type, buffer_len, out_len, dst);
     // Reallocate to use larger length
     if (*out_len > buffer_len) {
       delete [] dst;
       int64_t realloc_len = *out_len;
       dst = new char[realloc_len];
-      result = LGBM_BoosterDumpModel(handle, start_iteration, num_iteration, realloc_len, out_len, dst);
+      result = LGBM_BoosterDumpModel(handle, start_iteration, num_iteration, feature_importance_type, realloc_len, out_len, dst);
     }
-    if (result != 0) {
-      return nullptr;
-    }
-    return dst;
-  }
-
-  char ** LGBM_BoosterGetEvalNamesSWIG(BoosterHandle handle,
-                                       int eval_counts) {
-    char** dst = new char*[eval_counts];
-    for (int i = 0; i < eval_counts; ++i) {
-      dst[i] = new char[128];
-    }
-    int result = LGBM_BoosterGetEvalNames(handle, &eval_counts, dst);
     if (result != 0) {
       return nullptr;
     }
@@ -93,14 +83,38 @@
                                       int ncol,
                                       int is_row_major,
                                       int predict_type,
+                                      int start_iteration,
                                       int num_iteration,
                                       const char* parameter,
                                       int64_t* out_len,
                                       double* out_result) {
     double* data0 = (double*)jenv->GetPrimitiveArrayCritical(data, 0);
 
-    int ret = LGBM_BoosterPredictForMatSingleRow(handle, data0, data_type, ncol, is_row_major, predict_type,
+    int ret = LGBM_BoosterPredictForMatSingleRow(handle, data0, data_type, ncol, is_row_major, predict_type, start_iteration,
                                                  num_iteration, parameter, out_len, out_result);
+
+    jenv->ReleasePrimitiveArrayCritical(data, data0, JNI_ABORT);
+
+    return ret;
+  }
+
+  /*! \brief Even faster variant of `LGBM_BoosterPredictForMatSingle`.
+   *
+   * Uses `LGBM_BoosterPredictForMatSingleRowFast` which is faster
+   * than `LGBM_BoosterPredictForMatSingleRow` and the trick of
+   * `LGBM_BoosterPredictForMatSingle` to capture the Java data array
+   * using `GetPrimitiveArrayCritical`, which can yield faster access
+   * to the array if the JVM passes the actual address to the C++ side
+   * instead of performing a copy.
+   */
+  int LGBM_BoosterPredictForMatSingleRowFastCriticalSWIG(JNIEnv *jenv,
+                                                         jdoubleArray data,
+                                                         FastConfigHandle handle,
+                                                         int64_t* out_len,
+                                                         double* out_result) {
+    double* data0 = (double*)jenv->GetPrimitiveArrayCritical(data, 0);
+
+    int ret = LGBM_BoosterPredictForMatSingleRowFast(handle, data0, out_len, out_result);
 
     jenv->ReleasePrimitiveArrayCritical(data, data0, JNI_ABORT);
 
@@ -117,6 +131,7 @@
                                       int64_t nelem,
                                       int64_t num_col,
                                       int predict_type,
+                                      int start_iteration,
                                       int num_iteration,
                                       const char* parameter,
                                       int64_t* out_len,
@@ -134,7 +149,46 @@
     int32_t ind[2] = { 0, numNonZeros };
 
     int ret = LGBM_BoosterPredictForCSRSingleRow(handle, ind, indptr_type, indices0, values0, data_type, 2,
-                                                 nelem, num_col, predict_type, num_iteration, parameter, out_len, out_result);
+                                                 nelem, num_col, predict_type, start_iteration, num_iteration, parameter, out_len, out_result);
+
+    jenv->ReleasePrimitiveArrayCritical(values, values0, JNI_ABORT);
+    jenv->ReleasePrimitiveArrayCritical(indices, indices0, JNI_ABORT);
+
+    return ret;
+  }
+
+  /*! \brief Even faster variant of `LGBM_BoosterPredictForCSRSingle`.
+   *
+   * Uses `LGBM_BoosterPredictForCSRSingleRowFast` which is faster
+   * than `LGBM_BoosterPredictForMatSingleRow` and the trick of
+   * `LGBM_BoosterPredictForCSRSingle` to capture the Java data array
+   * using `GetPrimitiveArrayCritical`, which can yield faster access
+   * to the array if the JVM passes the actual address to the C++ side
+   * instead of performing a copy.
+   */
+  int LGBM_BoosterPredictForCSRSingleRowFastCriticalSWIG(JNIEnv *jenv,
+                                                         jintArray indices,
+                                                         jdoubleArray values,
+                                                         int numNonZeros,
+                                                         FastConfigHandle handle,
+                                                         int indptr_type,
+                                                         int64_t nelem,
+                                                         int64_t* out_len,
+                                                         double* out_result) {
+    // Alternatives
+    // - GetIntArrayElements: performs copy
+    // - GetDirectBufferAddress: fails on wrapped array
+    // Some words of warning for GetPrimitiveArrayCritical
+    // https://stackoverflow.com/questions/23258357/whats-the-trade-off-between-using-getprimitivearraycritical-and-getprimitivety
+
+    jboolean isCopy;
+    int* indices0 = (int*)jenv->GetPrimitiveArrayCritical(indices, &isCopy);
+    double* values0 = (double*)jenv->GetPrimitiveArrayCritical(values, &isCopy);
+
+    int32_t ind[2] = { 0, numNonZeros };
+
+    int ret = LGBM_BoosterPredictForCSRSingleRowFast(handle, ind, indptr_type, indices0, values0, 2,
+                                                     nelem, out_len, out_result);
 
     jenv->ReleasePrimitiveArrayCritical(values, values0, JNI_ABORT);
     jenv->ReleasePrimitiveArrayCritical(indices, indices0, JNI_ABORT);
@@ -245,15 +299,6 @@
 %pointer_cast(int32_t *, void *, int32_t_to_voidp_ptr)
 %pointer_cast(int64_t *, void *, int64_t_to_voidp_ptr)
 
-%array_functions(double, doubleArray)
-%array_functions(float, floatArray)
-%array_functions(int, intArray)
-%array_functions(long, longArray)
-/* Note: there is a bug in the SWIG generated string arrays when creating
-   a new array with strings where the strings are prematurely deallocated
-*/
-%array_functions(char *, stringArray)
-
 /* Custom pointer manipulation template */
 %define %pointer_manipulation(TYPE, NAME)
 %{
@@ -294,6 +339,36 @@ TYPE *NAME##_handle();
 
 %enddef
 
+%define %long_array_functions(TYPE,NAME)
+%{
+  static TYPE *new_##NAME(int64_t nelements) { %}
+  %{  return new TYPE[nelements](); %}
+  %{}
+
+  static void delete_##NAME(TYPE *ary) { %}
+  %{  delete [] ary; %}
+  %{}
+
+  static TYPE NAME##_getitem(TYPE *ary, int64_t index) {
+    return ary[index];
+  }
+  static void NAME##_setitem(TYPE *ary, int64_t index, TYPE value) {
+    ary[index] = value;
+  }
+  %}
+
+TYPE *new_##NAME(int64_t nelements);
+void delete_##NAME(TYPE *ary);
+TYPE NAME##_getitem(TYPE *ary, int64_t index);
+void NAME##_setitem(TYPE *ary, int64_t index, TYPE value);
+
+%enddef
+
+%long_array_functions(double, doubleArray)
+%long_array_functions(float, floatArray)
+%long_array_functions(int, intArray)
+%long_array_functions(long, longArray)
+
 %pointer_manipulation(void*, voidpp)
 
 /* Allow dereferencing of void** to void* */
@@ -301,3 +376,5 @@ TYPE *NAME##_handle();
 
 /* Allow retrieving handle to void** */
 %pointer_handle(void*, voidpp)
+
+%include "StringArray_API_extensions.i"

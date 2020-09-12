@@ -26,7 +26,9 @@ lgb.train(
 \arguments{
 \item{params}{List of parameters}
 
-\item{data}{a \code{lgb.Dataset} object, used for training}
+\item{data}{a \code{lgb.Dataset} object, used for training. Some functions, such as \code{\link{lgb.cv}},
+may allow you to pass other types of data like \code{matrix} and then separately supply
+\code{label} as a keyword argument.}
 
 \item{nrounds}{number of training rounds}
 
@@ -36,7 +38,39 @@ lgb.train(
 \code{regression}, \code{regression_l1}, \code{huber},
 \code{binary}, \code{lambdarank}, \code{multiclass}, \code{multiclass}}
 
-\item{eval}{evaluation function, can be (a list of) character or custom eval function}
+\item{eval}{evaluation function(s). This can be a character vector, function, or list with a mixture of
+            strings and functions.
+
+            \itemize{
+                \item{\bold{a. character vector}:
+                    If you provide a character vector to this argument, it should contain strings with valid
+                    evaluation metrics.
+                    See \href{https://lightgbm.readthedocs.io/en/latest/Parameters.html#metric}{
+                    The "metric" section of the documentation}
+                    for a list of valid metrics.
+                }
+                \item{\bold{b. function}:
+                     You can provide a custom evaluation function. This
+                     should accept the keyword arguments \code{preds} and \code{dtrain} and should return a named
+                     list with three elements:
+                     \itemize{
+                         \item{\code{name}: A string with the name of the metric, used for printing
+                             and storing results.
+                         }
+                         \item{\code{value}: A single number indicating the value of the metric for the
+                             given predictions and true values
+                         }
+                         \item{
+                             \code{higher_better}: A boolean indicating whether higher values indicate a better fit.
+                             For example, this would be \code{FALSE} for metrics like MAE or RMSE.
+                         }
+                     }
+                }
+                \item{\bold{c. list}:
+                    If a list is given, it should only contain character vectors and functions.
+                    These should follow the requirements from the descriptions above.
+                }
+            }}
 
 \item{verbose}{verbosity for output, if <= 0, also will disable the print of evaluation during training}
 
@@ -65,11 +99,11 @@ original datasets}
 
 \item{...}{other parameters, see Parameters.rst for more information. A few key parameters:
 \itemize{
-    \item{boosting}{Boosting type. \code{"gbdt"} or \code{"dart"}}
-    \item{num_leaves}{number of leaves in one tree. defaults to 127}
-    \item{max_depth}{Limit the max depth for tree model. This is used to deal with
+    \item{\code{boosting}: Boosting type. \code{"gbdt"}, \code{"rf"}, \code{"dart"} or \code{"goss"}.}
+    \item{\code{num_leaves}: Maximum number of leaves in one tree.}
+    \item{\code{max_depth}: Limit the max depth for tree model. This is used to deal with
                      overfit when #data is small. Tree still grow by leaf-wise.}
-    \item{num_threads}{Number of threads for LightGBM. For the best speed, set this to
+    \item{\code{num_threads}: Number of threads for LightGBM. For the best speed, set this to
                        the number of real CPU cores, not the number of threads (most
                        CPU using hyper-threading to generate 2 threads per CPU core).}
 }}
@@ -80,8 +114,25 @@ a trained booster model \code{lgb.Booster}.
 \description{
 Logic to train with LightGBM
 }
+\section{Early Stopping}{
+
+
+         "early stopping" refers to stopping the training process if the model's performance on a given
+         validation set does not improve for several consecutive iterations.
+
+         If multiple arguments are given to \code{eval}, their order will be preserved. If you enable
+         early stopping by setting \code{early_stopping_rounds} in \code{params}, by default all
+         metrics will be considered for early stopping.
+
+         If you want to only consider the first metric for early stopping, pass
+         \code{first_metric_only = TRUE} in \code{params}. Note that if you also specify \code{metric}
+         in \code{params}, that metric will be considered the "first" one. If you omit \code{metric},
+         a default metric will be used based on your choice for the parameter \code{obj} (keyword argument)
+         or \code{objective} (passed into \code{params}).
+}
+
 \examples{
-library(lightgbm)
+\dontrun{
 data(agaricus.train, package = "lightgbm")
 train <- agaricus.train
 dtrain <- lgb.Dataset(train$data, label = train$label)
@@ -93,10 +144,11 @@ valids <- list(test = dtest)
 model <- lgb.train(
   params = params
   , data = dtrain
-  , nrounds = 10L
+  , nrounds = 5L
   , valids = valids
   , min_data = 1L
   , learning_rate = 1.0
-  , early_stopping_rounds = 5L
+  , early_stopping_rounds = 3L
 )
+}
 }

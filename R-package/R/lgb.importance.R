@@ -1,45 +1,45 @@
-#' Compute feature importance in a model
-#'
-#' Creates a \code{data.table} of feature importances in a model.
-#'
+#' @name lgb.importance
+#' @title Compute feature importance in a model
+#' @description Creates a \code{data.table} of feature importances in a model.
 #' @param model object of class \code{lgb.Booster}.
 #' @param percentage whether to show importance in relative percentage.
 #'
-#' @return
-#'
-#' For a tree model, a \code{data.table} with the following columns:
+#' @return For a tree model, a \code{data.table} with the following columns:
 #' \itemize{
-#'   \item \code{Feature} Feature names in the model.
-#'   \item \code{Gain} The total gain of this feature's splits.
-#'   \item \code{Cover} The number of observation related to this feature.
-#'   \item \code{Frequency} The number of times a feature splited in trees.
+#'   \item{\code{Feature}: Feature names in the model.}
+#'   \item{\code{Gain}: The total gain of this feature's splits.}
+#'   \item{\code{Cover}: The number of observation related to this feature.}
+#'   \item{\code{Frequency}: The number of times a feature splited in trees.}
 #' }
 #'
 #' @examples
-#' library(lightgbm)
+#' \dontrun{
 #' data(agaricus.train, package = "lightgbm")
 #' train <- agaricus.train
 #' dtrain <- lgb.Dataset(train$data, label = train$label)
 #'
 #' params <- list(
 #'   objective = "binary"
-#'   , learning_rate = 0.01
-#'   , num_leaves = 63L
+#'   , learning_rate = 0.1
 #'   , max_depth = -1L
 #'   , min_data_in_leaf = 1L
 #'   , min_sum_hessian_in_leaf = 1.0
 #' )
-#' model <- lgb.train(params, dtrain, 10L)
+#' model <- lgb.train(
+#'     params = params
+#'     , data = dtrain
+#'     , nrounds = 5L
+#' )
 #'
 #' tree_imp1 <- lgb.importance(model, percentage = TRUE)
 #' tree_imp2 <- lgb.importance(model, percentage = FALSE)
-#'
+#' }
 #' @importFrom data.table := setnames setorderv
 #' @export
 lgb.importance <- function(model, percentage = TRUE) {
 
   # Check if model is a lightgbm model
-  if (!inherits(model, "lgb.Booster")) {
+  if (!lgb.is.Booster(model)) {
     stop("'model' has to be an object of class lgb.Booster")
   }
 
@@ -75,7 +75,6 @@ lgb.importance <- function(model, percentage = TRUE) {
     )]
   }
 
-  # Return importance table
   return(tree_imp_dt)
 
 }

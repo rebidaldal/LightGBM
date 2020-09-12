@@ -32,7 +32,7 @@ test_that("lgb.intereprete works as expected for binary classification", {
     model <- lgb.train(
         params = params
         , data = dtrain
-        , nrounds = 10L
+        , nrounds = 3L
     )
     num_trees <- 5L
     tree_interpretation <- lgb.interprete(
@@ -40,7 +40,7 @@ test_that("lgb.intereprete works as expected for binary classification", {
         , data = test$data
         , idxset = seq_len(num_trees)
     )
-    expect_true(methods::is(tree_interpretation, "list"))
+    expect_identical(class(tree_interpretation), "list")
     expect_true(length(tree_interpretation) == num_trees)
     expect_null(names(tree_interpretation))
     expect_true(all(
@@ -82,7 +82,7 @@ test_that("lgb.intereprete works as expected for multiclass classification", {
     model <- lgb.train(
         params = params
         , data = dtrain
-        , nrounds = 10L
+        , nrounds = 3L
         , min_data = 1L
     )
     num_trees <- 5L
@@ -91,7 +91,7 @@ test_that("lgb.intereprete works as expected for multiclass classification", {
         , data = test[, 1L:4L]
         , idxset = seq_len(num_trees)
     )
-    expect_true(methods::is(tree_interpretation, "list"))
+    expect_identical(class(tree_interpretation), "list")
     expect_true(length(tree_interpretation) == num_trees)
     expect_null(names(tree_interpretation))
     expect_true(all(

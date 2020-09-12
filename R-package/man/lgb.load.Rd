@@ -15,12 +15,11 @@ lgb.load(filename = NULL, model_str = NULL)
 lgb.Booster
 }
 \description{
-Load LightGBM model from saved model file or string
-Load LightGBM takes in either a file path or model string
-If both are provided, Load will default to loading from file
+Load LightGBM takes in either a file path or model string.
+              If both are provided, Load will default to loading from file
 }
 \examples{
-library(lightgbm)
+\dontrun{
 data(agaricus.train, package = "lightgbm")
 train <- agaricus.train
 dtrain <- lgb.Dataset(train$data, label = train$label)
@@ -32,15 +31,16 @@ valids <- list(test = dtest)
 model <- lgb.train(
   params = params
   , data = dtrain
-  , nrounds = 10L
+  , nrounds = 5L
   , valids = valids
   , min_data = 1L
   , learning_rate = 1.0
-  , early_stopping_rounds = 5L
+  , early_stopping_rounds = 3L
 )
-lgb.save(model, "model.txt")
-load_booster <- lgb.load(filename = "model.txt")
+model_file <- tempfile(fileext = ".txt")
+lgb.save(model, model_file)
+load_booster <- lgb.load(filename = model_file)
 model_string <- model$save_model_to_string(NULL) # saves best iteration
 load_booster_from_str <- lgb.load(model_str = model_string)
-
+}
 }

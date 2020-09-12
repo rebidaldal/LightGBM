@@ -20,7 +20,7 @@ getinfo(dataset, ...)
 info data
 }
 \description{
-Get information of an \code{lgb.Dataset} object
+Get one attribute of a \code{lgb.Dataset}
 }
 \details{
 The \code{name} field can be one of the following:
@@ -33,7 +33,7 @@ The \code{name} field can be one of the following:
 }
 }
 \examples{
-library(lightgbm)
+\dontrun{
 data(agaricus.train, package = "lightgbm")
 train <- agaricus.train
 dtrain <- lgb.Dataset(train$data, label = train$label)
@@ -44,5 +44,5 @@ lightgbm::setinfo(dtrain, "label", 1 - labels)
 
 labels2 <- lightgbm::getinfo(dtrain, "label")
 stopifnot(all(labels2 == 1 - labels))
-
+}
 }

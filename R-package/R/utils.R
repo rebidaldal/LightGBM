@@ -1,9 +1,17 @@
 lgb.is.Booster <- function(x) {
-  lgb.check.r6.class(x, "lgb.Booster") # Checking if it is of class lgb.Booster or not
+  lgb.check.r6.class(x, "lgb.Booster")
 }
 
 lgb.is.Dataset <- function(x) {
-  lgb.check.r6.class(x, "lgb.Dataset") # Checking if it is of class lgb.Dataset or not
+  lgb.check.r6.class(x, "lgb.Dataset")
+}
+
+lgb.null.handle <- function() {
+  if (.Machine$sizeof.pointer == 8L) {
+    return(NA_real_)
+  } else {
+    return(NA_integer_)
+  }
 }
 
 lgb.is.null.handle <- function(x) {
@@ -11,12 +19,41 @@ lgb.is.null.handle <- function(x) {
 }
 
 lgb.encode.char <- function(arr, len) {
-
   if (!is.raw(arr)) {
-    stop("lgb.encode.char: Can only encode from raw type") # Not an object of type raw
+    stop("lgb.encode.char: Can only encode from raw type")
   }
-  rawToChar(arr[seq_len(len)]) # Return the conversion of raw type to character type
+  return(rawToChar(arr[seq_len(len)]))
+}
 
+# [description] Raise an error. Before raising that error, check for any error message
+#               stored in a buffer on the C++ side.
+lgb.last_error <- function() {
+  # Perform text error buffering
+  buf_len <- 200L
+  act_len <- 0L
+  err_msg <- raw(buf_len)
+  err_msg <- .Call(
+    "LGBM_GetLastError_R"
+    , buf_len
+    , act_len
+    , err_msg
+    , PACKAGE = "lib_lightgbm"
+  )
+
+  # Check error buffer
+  if (act_len > buf_len) {
+    buf_len <- act_len
+    err_msg <- raw(buf_len)
+    err_msg <- .Call(
+      "LGBM_GetLastError_R"
+      , buf_len
+      , act_len
+      , err_msg
+      , PACKAGE = "lib_lightgbm"
+    )
+  }
+
+  stop("api error: ", lgb.encode.char(err_msg, act_len))
 }
 
 lgb.call <- function(fun_name, ret, ...) {
@@ -43,35 +80,7 @@ lgb.call <- function(fun_name, ret, ...) {
   call_state <- as.integer(call_state)
   # Check for call state value post call
   if (call_state != 0L) {
-
-    # Perform text error buffering
-    buf_len <- 200L
-    act_len <- 0L
-    err_msg <- raw(buf_len)
-    err_msg <- .Call(
-      "LGBM_GetLastError_R"
-      , buf_len
-      , act_len
-      , err_msg
-      , PACKAGE = "lib_lightgbm"
-    )
-
-    # Check error buffer
-    if (act_len > buf_len) {
-      buf_len <- act_len
-      err_msg <- raw(buf_len)
-      err_msg <- .Call(
-        "LGBM_GetLastError_R"
-        , buf_len
-        , act_len
-        , err_msg
-        , PACKAGE = "lib_lightgbm"
-      )
-    }
-
-    # Return error
-    stop("api error: ", lgb.encode.char(err_msg, act_len))
-
+    lgb.last_error()
   }
 
   return(ret)
@@ -95,7 +104,6 @@ lgb.call.return.str <- function(fun_name, ...) {
     buf <- lgb.call(fun_name, ret = buf, ..., buf_len, act_len)
   }
 
-  # Return encoded character
   return(lgb.encode.char(buf, act_len))
 
 }
@@ -103,7 +111,7 @@ lgb.call.return.str <- function(fun_name, ...) {
 lgb.params2str <- function(params, ...) {
 
   # Check for a list as input
-  if (!is.list(params)) {
+  if (!identical(class(params), "list")) {
     stop("params must be a list")
   }
 
@@ -134,8 +142,17 @@ lgb.params2str <- function(params, ...) {
   # Perform key value join
   for (key in names(params)) {
 
-    # Join multi value first
-    val <- paste0(format(params[[key]], scientific = FALSE), collapse = ",")
+    # If a parameter has multiple values, join those values together with commas.
+    # trimws() is necessary because format() will pad to make strings the same width
+    val <- paste0(
+      trimws(
+        format(
+          x = params[[key]]
+          , scientific = FALSE
+        )
+      )
+      , collapse = ","
+    )
     if (nchar(val) <= 0L) next # Skip join
 
     # Join key value
@@ -146,22 +163,73 @@ lgb.params2str <- function(params, ...) {
 
   # Check ret length
   if (length(ret) == 0L) {
+    return(lgb.c_str(""))
+  }
 
-    # Return empty string
-    lgb.c_str("")
+  return(lgb.c_str(paste0(ret, collapse = " ")))
 
-  } else {
+}
 
-    # Return string separated by a space per element
-    lgb.c_str(paste0(ret, collapse = " "))
+lgb.check_interaction_constraints <- function(params, column_names) {
+
+  # Convert interaction constraints to feature numbers
+  string_constraints <- list()
+
+  if (!is.null(params[["interaction_constraints"]])) {
+
+    if (!methods::is(params[["interaction_constraints"]], "list")) {
+        stop("interaction_constraints must be a list")
+    }
+    if (!all(sapply(params[["interaction_constraints"]], function(x) {is.character(x) || is.numeric(x)}))) {
+        stop("every element in interaction_constraints must be a character vector or numeric vector")
+    }
+
+    for (constraint in params[["interaction_constraints"]]) {
+
+      # Check for character name
+      if (is.character(constraint)) {
+
+          constraint_indices <- as.integer(match(constraint, column_names) - 1L)
+
+          # Provided indices, but some indices are not existing?
+          if (sum(is.na(constraint_indices)) > 0L) {
+            stop(
+              "supplied an unknown feature in interaction_constraints "
+              , sQuote(constraint[is.na(constraint_indices)])
+            )
+          }
+
+        } else {
+
+          # Check that constraint indices are at most number of features
+          if (max(constraint) > length(column_names)) {
+            stop(
+              "supplied a too large value in interaction_constraints: "
+              , max(constraint)
+              , " but only "
+              , length(column_names)
+              , " features"
+            )
+          }
+
+          # Store indices as [0, n-1] indexed instead of [1, n] indexed
+          constraint_indices <- as.integer(constraint - 1L)
+
+        }
+
+        # Convert constraint to string
+        constraint_string <- paste0("[", paste0(constraint_indices, collapse = ","), "]")
+        string_constraints <- append(string_constraints, constraint_string)
+    }
 
   }
+
+  return(string_constraints)
 
 }
 
 lgb.c_str <- function(x) {
 
-  # Perform character to raw conversion
   ret <- charToRaw(as.character(x))
   ret <- c(ret, as.raw(0L))
   ret
@@ -209,6 +277,11 @@ lgb.check.obj <- function(params, obj) {
     , "mape"
     , "gamma"
     , "tweedie"
+    , "rank_xendcg"
+    , "xendcg"
+    , "xe_ndcg"
+    , "xe_ndcg_mart"
+    , "xendcg_mart"
   )
 
   # Check whether the objective is empty or not, and take it from params if needed
@@ -222,34 +295,57 @@ lgb.check.obj <- function(params, obj) {
     # If the objective is a character, check if it is a known objective
     if (!(params$objective %in% OBJECTIVES)) {
 
-      # Interrupt on unknown objective name
       stop("lgb.check.obj: objective name error should be one of (", paste0(OBJECTIVES, collapse = ", "), ")")
 
     }
 
   } else if (!is.function(params$objective)) {
 
-    # If objective is not a character nor a function, then stop
     stop("lgb.check.obj: objective should be a character or a function")
 
   }
 
-  # Return parameters
   return(params)
 
 }
 
+# [description]
+#     Take any character values from eval and store them in params$metric.
+#     This has to account for the fact that `eval` could be a character vector,
+#     a function, a list of functions, or a list with a mix of strings and
+#     functions
 lgb.check.eval <- function(params, eval) {
 
-  # Check if metric is null, if yes put a list instead
   if (is.null(params$metric)) {
     params$metric <- list()
+  } else if (is.character(params$metric)) {
+    params$metric <- as.list(params$metric)
   }
 
-  # If 'eval' is a list or character vector, store it in 'metric'
-  if (is.character(eval) || is.list(eval)) {
-    params$metric <- append(params$metric, eval)
+  # if 'eval' is a character vector or list, find the character
+  # elements and add them to 'metric'
+  if (!is.function(eval)) {
+    for (i in seq_along(eval)) {
+      element <- eval[[i]]
+      if (is.character(element)) {
+        params$metric <- append(params$metric, element)
+      }
+    }
   }
+
+  # If more than one character metric was given, then "None" should
+  # not be included
+  if (length(params$metric) > 1L) {
+    params$metric <- Filter(
+        f = function(metric) {
+          !(metric %in% .NO_METRIC_STRINGS())
+        }
+        , x = params$metric
+    )
+  }
+
+  # duplicate metrics should be filtered out
+  params$metric <- as.list(unique(unlist(params$metric)))
 
   return(params)
 }

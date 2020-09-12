@@ -14,8 +14,8 @@
 #include <cstring>
 
 #include "dense_bin.hpp"
-#include "dense_nbits_bin.hpp"
-#include "ordered_sparse_bin.hpp"
+#include "multi_val_dense_bin.hpp"
+#include "multi_val_sparse_bin.hpp"
 #include "sparse_bin.hpp"
 
 namespace LightGBM {
@@ -79,7 +79,7 @@ namespace LightGBM {
                                     int num_distinct_values, int max_bin,
                                     size_t total_cnt, int min_data_in_bin) {
     std::vector<double> bin_upper_bound;
-    CHECK(max_bin > 0);
+    CHECK_GT(max_bin, 0);
     if (num_distinct_values <= max_bin) {
       bin_upper_bound.clear();
       int cur_cnt_inbin = 0;
@@ -249,7 +249,7 @@ namespace LightGBM {
     }
     bin_upper_bound.insert(bin_upper_bound.end(), bounds_to_add.begin(), bounds_to_add.end());
     std::stable_sort(bin_upper_bound.begin(), bin_upper_bound.end());
-    CHECK(bin_upper_bound.size() <= static_cast<size_t>(max_bin));
+    CHECK_LE(bin_upper_bound.size(), static_cast<size_t>(max_bin));
     return bin_upper_bound;
   }
 
@@ -307,7 +307,7 @@ namespace LightGBM {
     } else {
       bin_upper_bound.push_back(std::numeric_limits<double>::infinity());
     }
-    CHECK(bin_upper_bound.size() <= static_cast<size_t>(max_bin));
+    CHECK_LE(bin_upper_bound.size(), static_cast<size_t>(max_bin));
     return bin_upper_bound;
   }
 
@@ -323,7 +323,7 @@ namespace LightGBM {
   }
 
   void BinMapper::FindBin(double* values, int num_sample_values, size_t total_sample_cnt,
-                          int max_bin, int min_data_in_bin, int min_split_data, BinType bin_type,
+                          int max_bin, int min_data_in_bin, int min_split_data, bool pre_filter, BinType bin_type,
                           bool use_missing, bool zero_as_missing,
                           const std::vector<double>& forced_upper_bounds) {
     int na_cnt = 0;
@@ -420,7 +420,7 @@ namespace LightGBM {
           cnt_in_bin[num_bin_ - 1] = na_cnt;
         }
       }
-      CHECK(num_bin_ <= max_bin);
+      CHECK_LE(num_bin_, max_bin);
     } else {
       // convert to int type first
       std::vector<int> distinct_values_int;
@@ -439,7 +439,6 @@ namespace LightGBM {
           }
         }
       }
-      num_bin_ = 0;
       int rest_cnt = static_cast<int>(total_sample_cnt - na_cnt);
       if (rest_cnt > 0) {
         const int SPARSE_RATIO = 100;
@@ -449,23 +448,25 @@ namespace LightGBM {
         }
         // sort by counts
         Common::SortForPair<int, int>(&counts_int, &distinct_values_int, 0, true);
-        // avoid first bin is zero
-        if (distinct_values_int[0] == 0) {
-          if (counts_int.size() == 1) {
-            counts_int.push_back(0);
-            distinct_values_int.push_back(distinct_values_int[0] + 1);
-          }
-          std::swap(counts_int[0], counts_int[1]);
-          std::swap(distinct_values_int[0], distinct_values_int[1]);
-        }
         // will ignore the categorical of small counts
-        int cut_cnt = static_cast<int>((total_sample_cnt - na_cnt) * 0.99f);
+        int cut_cnt = static_cast<int>(
+            Common::RoundInt((total_sample_cnt - na_cnt) * 0.99f));
         size_t cur_cat = 0;
         categorical_2_bin_.clear();
         bin_2_categorical_.clear();
         int used_cnt = 0;
-        max_bin = std::min(static_cast<int>(distinct_values_int.size()), max_bin);
+        int distinct_cnt = static_cast<int>(distinct_values_int.size());
+        if (na_cnt > 0) {
+          ++distinct_cnt;
+        }
+        max_bin = std::min(distinct_cnt, max_bin);
         cnt_in_bin.clear();
+
+        // Push the dummy bin for NaN
+        bin_2_categorical_.push_back(-1);
+        categorical_2_bin_[-1] = 0;
+        cnt_in_bin.push_back(0);
+        num_bin_ = 1;
         while (cur_cat < distinct_values_int.size()
                && (used_cnt < cut_cnt || num_bin_ < max_bin)) {
           if (counts_int[cur_cat] < min_data_in_bin && cur_cat > 1) {
@@ -478,21 +479,14 @@ namespace LightGBM {
           ++num_bin_;
           ++cur_cat;
         }
-        // need an additional bin for NaN
-        if (cur_cat == distinct_values_int.size() && na_cnt > 0) {
-          // use -1 to represent NaN
-          bin_2_categorical_.push_back(-1);
-          categorical_2_bin_[-1] = num_bin_;
-          cnt_in_bin.push_back(0);
-          ++num_bin_;
-        }
         // Use MissingType::None to represent this bin contains all categoricals
         if (cur_cat == distinct_values_int.size() && na_cnt == 0) {
           missing_type_ = MissingType::None;
         } else {
           missing_type_ = MissingType::NaN;
         }
-        cnt_in_bin.back() += static_cast<int>(total_sample_cnt - used_cnt);
+        // fix count of NaN bin
+        cnt_in_bin[0] = static_cast<int>(total_sample_cnt - used_cnt);
       }
     }
 
@@ -503,26 +497,23 @@ namespace LightGBM {
       is_trivial_ = false;
     }
     // check useless bin
-    if (!is_trivial_ && NeedFilter(cnt_in_bin, static_cast<int>(total_sample_cnt), min_split_data, bin_type_)) {
+    if (!is_trivial_ && pre_filter && NeedFilter(cnt_in_bin, static_cast<int>(total_sample_cnt), min_split_data, bin_type_)) {
       is_trivial_ = true;
     }
 
     if (!is_trivial_) {
       default_bin_ = ValueToBin(0);
-      if (bin_type_ == BinType::CategoricalBin) {
-        CHECK(default_bin_ > 0);
-      }
-    }
-    if (!is_trivial_) {
-      most_freq_bin_ = static_cast<uint32_t>(ArrayArgs<int>::ArgMax(cnt_in_bin));
-      // calculate sparse rate
-      sparse_rate_ = static_cast<double>(cnt_in_bin[default_bin_]) / total_sample_cnt;
-      const double max_sparse_rate = static_cast<double>(cnt_in_bin[most_freq_bin_]) / total_sample_cnt;
-      if (most_freq_bin_ != default_bin_ && max_sparse_rate > 0.7f) {
-        sparse_rate_ = max_sparse_rate;
-      } else {
+      most_freq_bin_ =
+          static_cast<uint32_t>(ArrayArgs<int>::ArgMax(cnt_in_bin));
+      const double max_sparse_rate =
+          static_cast<double>(cnt_in_bin[most_freq_bin_]) / total_sample_cnt;
+      // When most_freq_bin_ != default_bin_, there are some additional data loading costs.
+      // so use most_freq_bin_  = default_bin_ when there is not so sparse
+      if (most_freq_bin_ != default_bin_ && max_sparse_rate < kSparseThreshold) {
         most_freq_bin_ = default_bin_;
       }
+      sparse_rate_ =
+          static_cast<double>(cnt_in_bin[most_freq_bin_]) / total_sample_cnt;
     } else {
       sparse_rate_ = 1.0f;
     }
@@ -628,39 +619,28 @@ namespace LightGBM {
     return ret;
   }
 
-  template class DenseBin<uint8_t>;
-  template class DenseBin<uint16_t>;
-  template class DenseBin<uint32_t>;
+  template class DenseBin<uint8_t, true>;
+  template class DenseBin<uint8_t, false>;
+  template class DenseBin<uint16_t, false>;
+  template class DenseBin<uint32_t, false>;
 
   template class SparseBin<uint8_t>;
   template class SparseBin<uint16_t>;
   template class SparseBin<uint32_t>;
 
-  template class OrderedSparseBin<uint8_t>;
-  template class OrderedSparseBin<uint16_t>;
-  template class OrderedSparseBin<uint32_t>;
-
-  Bin* Bin::CreateBin(data_size_t num_data, int num_bin, double sparse_rate,
-    bool is_enable_sparse, double sparse_threshold, bool* is_sparse) {
-    // sparse threshold
-    if (sparse_rate >= sparse_threshold && is_enable_sparse) {
-      *is_sparse = true;
-      return CreateSparseBin(num_data, num_bin);
-    } else {
-      *is_sparse = false;
-      return CreateDenseBin(num_data, num_bin);
-    }
-  }
+  template class MultiValDenseBin<uint8_t>;
+  template class MultiValDenseBin<uint16_t>;
+  template class MultiValDenseBin<uint32_t>;
 
   Bin* Bin::CreateDenseBin(data_size_t num_data, int num_bin) {
     if (num_bin <= 16) {
-      return new Dense4bitsBin(num_data);
+      return new DenseBin<uint8_t, true>(num_data);
     } else if (num_bin <= 256) {
-      return new DenseBin<uint8_t>(num_data);
+      return new DenseBin<uint8_t, false>(num_data);
     } else if (num_bin <= 65536) {
-      return new DenseBin<uint16_t>(num_data);
+      return new DenseBin<uint16_t, false>(num_data);
     } else {
-      return new DenseBin<uint32_t>(num_data);
+      return new DenseBin<uint32_t, false>(num_data);
     }
   }
 
@@ -671,6 +651,70 @@ namespace LightGBM {
       return new SparseBin<uint16_t>(num_data);
     } else {
       return new SparseBin<uint32_t>(num_data);
+    }
+  }
+
+  MultiValBin* MultiValBin::CreateMultiValBin(data_size_t num_data, int num_bin, int num_feature, double sparse_rate) {
+    const double multi_val_bin_sparse_threshold = 0.25f;
+    if (sparse_rate >= multi_val_bin_sparse_threshold) {
+      const double average_element_per_row = (1.0 - sparse_rate) * num_feature;
+      return CreateMultiValSparseBin(num_data, num_bin,
+                                     average_element_per_row);
+    } else {
+      return CreateMultiValDenseBin(num_data, num_bin, num_feature);
+    }
+  }
+
+  MultiValBin* MultiValBin::CreateMultiValDenseBin(data_size_t num_data,
+                                                   int num_bin,
+                                                   int num_feature) {
+    if (num_bin <= 256) {
+      return new MultiValDenseBin<uint8_t>(num_data, num_bin, num_feature);
+    } else if (num_bin <= 65536) {
+      return new MultiValDenseBin<uint16_t>(num_data, num_bin, num_feature);
+    } else {
+      return new MultiValDenseBin<uint32_t>(num_data, num_bin, num_feature);
+    }
+  }
+
+  MultiValBin* MultiValBin::CreateMultiValSparseBin(data_size_t num_data,
+                                                    int num_bin,
+                                                    double estimate_element_per_row) {
+    size_t estimate_total_entries =
+        static_cast<size_t>(estimate_element_per_row * 1.1 * num_data);
+    if (estimate_total_entries <= std::numeric_limits<uint16_t>::max()) {
+      if (num_bin <= 256) {
+        return new MultiValSparseBin<uint16_t, uint8_t>(
+            num_data, num_bin, estimate_element_per_row);
+      } else if (num_bin <= 65536) {
+        return new MultiValSparseBin<uint16_t, uint16_t>(
+            num_data, num_bin, estimate_element_per_row);
+      } else {
+        return new MultiValSparseBin<uint16_t, uint32_t>(
+            num_data, num_bin, estimate_element_per_row);
+      }
+    } else if (estimate_total_entries <= std::numeric_limits<uint32_t>::max()) {
+      if (num_bin <= 256) {
+        return new MultiValSparseBin<uint32_t, uint8_t>(
+            num_data, num_bin, estimate_element_per_row);
+      } else if (num_bin <= 65536) {
+        return new MultiValSparseBin<uint32_t, uint16_t>(
+            num_data, num_bin, estimate_element_per_row);
+      } else {
+        return new MultiValSparseBin<uint32_t, uint32_t>(
+            num_data, num_bin, estimate_element_per_row);
+      }
+    } else  {
+      if (num_bin <= 256) {
+        return new MultiValSparseBin<size_t, uint8_t>(
+            num_data, num_bin, estimate_element_per_row);
+      } else if (num_bin <= 65536) {
+        return new MultiValSparseBin<size_t, uint16_t>(
+            num_data, num_bin, estimate_element_per_row);
+      } else {
+        return new MultiValSparseBin<size_t, uint32_t>(
+            num_data, num_bin, estimate_element_per_row);
+      }
     }
   }
 

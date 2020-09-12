@@ -11,7 +11,10 @@ OPTION(USE_OPENMP "Enable OpenMP" ON)
 OPTION(USE_GPU "Enable GPU-accelerated training" OFF)
 OPTION(USE_SWIG "Enable SWIG to generate Java API" OFF)
 OPTION(USE_HDFS "Enable HDFS support (EXPERIMENTAL)" OFF)
-OPTION(USE_R35 "Set to ON if your R version is not earlier than 3.5" OFF)
+OPTION(USE_TIMETAG "Set to ON to output time costs" OFF)
+OPTION(USE_DEBUG "Set to ON for Debug mode" OFF)
+OPTION(BUILD_STATIC_LIB "Build static library" OFF)
+OPTION(BUILD_FOR_R "Set to ON if building lib_lightgbm for use with the R package" OFF)
 
 if(APPLE)
     OPTION(APPLE_OUTPUT_DYLIB "Output dylib shared library" OFF)
@@ -64,9 +67,23 @@ if(USE_SWIG)
   endif()
 endif(USE_SWIG)
 
-if(USE_R35)
-    ADD_DEFINITIONS(-DR_VER_ABOVE_35)
-endif(USE_R35)
+if(BUILD_FOR_R)
+    list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/modules")
+    find_package(LibR REQUIRED)
+    message(STATUS "LIBR_EXECUTABLE: ${LIBR_EXECUTABLE}")
+    message(STATUS "LIBR_INCLUDE_DIRS: ${LIBR_INCLUDE_DIRS}")
+    message(STATUS "LIBR_CORE_LIBRARY: ${LIBR_CORE_LIBRARY}")
+    include_directories(${LIBR_INCLUDE_DIRS})
+    ADD_DEFINITIONS(-DLGB_R_BUILD)
+endif(BUILD_FOR_R)
+
+if(USE_TIMETAG)
+    ADD_DEFINITIONS(-DTIMETAG)
+endif(USE_TIMETAG)
+
+if(USE_DEBUG)
+    ADD_DEFINITIONS(-DDEBUG)
+endif(USE_DEBUG)
 
 if(USE_MPI)
     find_package(MPI REQUIRED)
@@ -126,12 +143,32 @@ int main() {
 " MM_PREFETCH)
 
 if(${MM_PREFETCH})
-  message(STATUS "Use _mm_prefetch")
+  message(STATUS "Using _mm_prefetch")
   ADD_DEFINITIONS(-DMM_PREFETCH)
 endif()
 
+include(CheckCXXSourceCompiles)
+check_cxx_source_compiles("
+#include <mm_malloc.h>
+int main() {
+  char *a = (char*)_mm_malloc(8, 16);
+  _mm_free(a);
+  return 0;
+}
+" MM_MALLOC)
+
+if(${MM_MALLOC})
+  message(STATUS "Using _mm_malloc")
+  ADD_DEFINITIONS(-DMM_MALLOC)
+endif()
+
 if(UNIX OR MINGW OR CYGWIN)
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -pthread -O3 -Wextra -Wall -Wno-ignored-attributes -Wno-unknown-pragmas -Wno-return-type")
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -pthread -Wextra -Wall -Wno-ignored-attributes -Wno-unknown-pragmas -Wno-return-type")
+    if(USE_DEBUG)
+        SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O0")
+    else()
+        SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
+    endif()
     if(USE_SWIG)
         SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-strict-aliasing")
     endif()
@@ -152,10 +189,16 @@ if(MSVC)
         CMAKE_CXX_FLAGS_RELEASE
         CMAKE_CXX_FLAGS_RELWITHDEBINFO
     )
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4 /O2 /Ob2 /Oi /Ot /Oy /GL /MP")
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4 /MP")
+    if(USE_DEBUG)
+        SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Od")
+    else()
+        SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /O2 /Ob2 /Oi /Ot /Oy")
+    endif()
 else()
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -funroll-loops")
+    if(NOT USE_DEBUG)
+      SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -funroll-loops")
+    endif()
 endif(MSVC)
 
 SET(LightGBM_HEADER_DIR ${PROJECT_SOURCE_DIR}/include)
@@ -188,7 +231,19 @@ file(GLOB SOURCES
 )
 
 add_executable(lightgbm src/main.cpp ${SOURCES})
-add_library(_lightgbm SHARED src/c_api.cpp src/lightgbm_R.cpp ${SOURCES})
+list(APPEND SOURCES "src/c_api.cpp")
+
+# Only build the R part of the library if building for
+# use with the R package
+if(BUILD_FOR_R)
+  list(APPEND SOURCES "src/lightgbm_R.cpp")
+endif(BUILD_FOR_R)
+
+if (BUILD_STATIC_LIB)
+  add_library(_lightgbm STATIC ${SOURCES})
+else()
+  add_library(_lightgbm SHARED ${SOURCES})
+endif(BUILD_STATIC_LIB)
 
 if(MSVC)
     set_target_properties(_lightgbm PROPERTIES OUTPUT_NAME "lib_lightgbm")
@@ -259,6 +314,14 @@ if(WIN32 AND (MINGW OR CYGWIN))
     TARGET_LINK_LIBRARIES(lightgbm IPHLPAPI)
     TARGET_LINK_LIBRARIES(_lightgbm IPHLPAPI)
 endif()
+
+if(BUILD_FOR_R)
+  if(MSVC)
+    TARGET_LINK_LIBRARIES(_lightgbm ${LIBR_MSVC_CORE_LIBRARY})
+  else()
+    TARGET_LINK_LIBRARIES(_lightgbm ${LIBR_CORE_LIBRARY})
+  endif(MSVC)
+endif(BUILD_FOR_R)
 
 install(TARGETS lightgbm _lightgbm
         RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin

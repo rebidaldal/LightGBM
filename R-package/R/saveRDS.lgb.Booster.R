@@ -1,8 +1,7 @@
-#' saveRDS for \code{lgb.Booster} models
-#'
-#' Attempts to save a model using RDS. Has an additional parameter (\code{raw}) which decides
-#' whether to save the raw model or not.
-#'
+#' @name saveRDS.lgb.Booster
+#' @title saveRDS for \code{lgb.Booster} models
+#' @description Attempts to save a model using RDS. Has an additional parameter (\code{raw})
+#'              which decides whether to save the raw model or not.
 #' @param object R object to serialize.
 #' @param file a connection or the name of the file where the R object is saved to or read from.
 #' @param ascii a logical. If TRUE or NA, an ASCII representation is written; otherwise (default),
@@ -19,6 +18,7 @@
 #' @return NULL invisibly.
 #'
 #' @examples
+#' \dontrun{
 #' library(lightgbm)
 #' data(agaricus.train, package = "lightgbm")
 #' train <- agaricus.train
@@ -37,7 +37,9 @@
 #'     , learning_rate = 1.0
 #'     , early_stopping_rounds = 5L
 #' )
-#' saveRDS.lgb.Booster(model, "model.rds")
+#' model_file <- tempfile(fileext = ".rds")
+#' saveRDS.lgb.Booster(model, model_file)
+#' }
 #' @export
 saveRDS.lgb.Booster <- function(object,
                                 file = "",
@@ -50,10 +52,8 @@ saveRDS.lgb.Booster <- function(object,
   # Check if object has a raw value (and if the user wants to store the raw)
   if (is.na(object$raw) && raw) {
 
-    # Save model
     object$save()
 
-    # Save RDS
     saveRDS(
       object
       , file = file
@@ -68,7 +68,6 @@ saveRDS.lgb.Booster <- function(object,
 
   } else {
 
-    # Save as usual
     saveRDS(
       object
       , file = file

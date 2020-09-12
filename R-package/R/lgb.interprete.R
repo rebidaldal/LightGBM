@@ -1,7 +1,6 @@
-#' Compute feature contribution of prediction
-#'
-#' Computes feature contribution components of rawscore prediction.
-#'
+#' @name lgb.interprete
+#' @title Compute feature contribution of prediction
+#' @description Computes feature contribution components of rawscore prediction.
 #' @param model object of class \code{lgb.Booster}.
 #' @param data a matrix object or a dgCMatrix object.
 #' @param idxset an integer vector of indices of rows needed.
@@ -10,14 +9,14 @@
 #' @return For regression, binary classification and lambdarank model, a \code{list} of \code{data.table}
 #'         with the following columns:
 #'         \itemize{
-#'             \item \code{Feature} Feature names in the model.
-#'             \item \code{Contribution} The total contribution of this feature's splits.
+#'             \item{\code{Feature}: Feature names in the model.}
+#'             \item{\code{Contribution}: The total contribution of this feature's splits.}
 #'         }
 #'         For multiclass classification, a \code{list} of \code{data.table} with the Feature column and
 #'         Contribution columns to each class.
 #'
 #' @examples
-#' Sigmoid <- function(x) 1.0 / (1.0 + exp(-x))
+#' \dontrun{
 #' Logit <- function(x) log(x / (1.0 - x))
 #' data(agaricus.train, package = "lightgbm")
 #' train <- agaricus.train
@@ -28,16 +27,19 @@
 #'
 #' params <- list(
 #'     objective = "binary"
-#'     , learning_rate = 0.01
-#'     , num_leaves = 63L
+#'     , learning_rate = 0.1
 #'     , max_depth = -1L
 #'     , min_data_in_leaf = 1L
 #'     , min_sum_hessian_in_leaf = 1.0
 #' )
-#' model <- lgb.train(params, dtrain, 10L)
+#' model <- lgb.train(
+#'     params = params
+#'     , data = dtrain
+#'     , nrounds = 3L
+#' )
 #'
 #' tree_interpretation <- lgb.interprete(model, test$data, 1L:5L)
-#'
+#' }
 #' @importFrom data.table as.data.table
 #' @export
 lgb.interprete <- function(model,
@@ -86,7 +88,6 @@ lgb.interprete <- function(model,
     )
   }
 
-  # Return interpretation list
   return(tree_interpretation_dt_list)
 
 }
@@ -130,7 +131,6 @@ single.tree.interprete <- function(tree_dt,
   # Perform leaf to root conversion
   leaf_to_root(leaf_dt[["leaf_parent"]], leaf_dt[["leaf_value"]])
 
-  # Return formatted data.table
   data.table::data.table(
     Feature = feature_seq
     , Contribution = diff.default(value_seq)
@@ -231,6 +231,5 @@ single.row.interprete <- function(tree_dt, num_class, tree_index_mat, leaf_index
 
   }
 
-  # Return interpretation tree
   return(tree_interpretation_dt)
 }
